@@ -1,19 +1,13 @@
 #include <stdio.h>
 #include <iostream>
 #include <vector>
-
-#include <stdlib.h>
-#include <time.h>
 #include <fstream>
 
 #include "dcel.h"
 #include "voronoi.h"
+#include "poissondiscsampler.h"
 
 #include "jsoncons/json.hpp"
-
-double randomDouble(double min, double max) {
-    return min + (double)rand() / ((double)RAND_MAX / (max - min));
-}
 
 void outputDCEL(dcel::DCEL &T, std::string filename) {
     using jsoncons::json;
@@ -52,25 +46,32 @@ void outputDCEL(dcel::DCEL &T, std::string filename) {
 }
 
 int main() {
-    srand(time(NULL));
+    //srand(time(NULL));
 
-    // Generate an n point Voronoi diagram and write the face vertices
-    // to a JSON file.
-    int n = 10000;
+    using namespace dcel;
+
     double minx = -20.0;
     double maxx = 20.0;
     double miny = -20.0;
     double maxy = 20.0;
-    std::vector<dcel::Point> points;
-    points.reserve(n);
-    for (int i = 0; i < n; i++) {
-        dcel::Point p(randomDouble(minx, maxx), randomDouble(miny, maxy));
-        points.push_back(p);
-    }
+    PoissonDiscSampler::Extents2d bounds(minx, miny, maxx, maxy);
+    double radius = 0.25;
+    int k = 20;
 
-    std::cout << "Generating Voronoi diagram with " << n << " points." << std::endl;
+    std::cout << "Generating samples within " << 
+                 maxx - minx << " x " << maxy - miny << 
+                 " area with radius " << radius << std::endl;
 
-    dcel::DCEL T = Voronoi::voronoi(points);
+    std::vector<Point> samples;
+    samples = PoissonDiscSampler::generateSamples(bounds, radius, k);
+
+    std::cout << "Finished Generating " << samples.size() << 
+                 " samples." << std::endl;
+
+    std::cout << "Generating Voronoi diagram with " << samples.size() << 
+                 " points." << std::endl;
+
+    dcel::DCEL T = Voronoi::voronoi(samples);
 
     std::cout << "Finished generating Voronoi diagram." << std::endl;
     std::cout << "# Vertices:   " << T.vertices.size() << std::endl;
