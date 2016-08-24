@@ -6,6 +6,7 @@
 #include "dcel.h"
 #include "voronoi.h"
 #include "poissondiscsampler.h"
+#include "extents2d.h"
 
 #include "jsoncons/json.hpp"
 
@@ -54,7 +55,7 @@ int main() {
     double maxx = 20.0;
     double miny = -20.0;
     double maxy = 20.0;
-    PoissonDiscSampler::Extents2d bounds(minx, miny, maxx, maxy);
+    Extents2d bounds(minx, miny, maxx, maxy);
     double radius = 0.25;
     int k = 20;
 
