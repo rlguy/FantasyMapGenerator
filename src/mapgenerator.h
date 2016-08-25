@@ -11,6 +11,7 @@
 #include "dcel.h"
 #include "poissondiscsampler.h"
 #include "voronoi.h"
+#include "vertexmap.h"
 
 #include "jsoncons/json.hpp"
 
@@ -24,14 +25,23 @@ public:
 
     void initialize();
     void outputVoronoiDiagram(std::string filename);
+    void outputVertices(std::string filename);
+    void outputEdgeVertices(std::string filename);
+    void outputInteriorVertices(std::string filename);
 
 private:
+    jsoncons::json _getExtentsJSON();
+    void _outputVertices(std::vector<dcel::Vertex> &verts, 
+                         std::string filename);
 
     Extents2d _extents;
     double _resolution;
 
     dcel::DCEL _voronoi;
+    VertexMap _vertexMap;
     bool _isInitialized = false;
+
+    double _samplePadFactor = 1.5;
 
 };
 

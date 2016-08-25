@@ -15,25 +15,43 @@ void gen::MapGenerator::initialize() {
     std::cout << "Generating samples within " << 
                  _extents.maxx - _extents.minx << " x " << 
                  _extents.maxy - _extents.miny << 
-                 " area with radius " << _resolution << std::endl;
+                 " area with radius " << _resolution << "." << std::endl;
+
+    // Boundary vertices in the Voronoi diagram cannot be used as
+    // grid nodes and will be excluded from the map grid. Extending the
+    // bounds for the sample area will generate a Voronoi diagram that
+    // extends past the map bounds, resulting in less excluded grid nodes.
+    double pad = _samplePadFactor * _resolution;
+    Extents2d sampleExtents(_extents.minx - pad, _extents.miny - pad,
+                            _extents.maxx + pad, _extents.maxy + pad);
 
     std::vector<dcel::Point> samples;
-    samples = PoissonDiscSampler::generateSamples(_extents, _resolution, 25);
+    samples = PoissonDiscSampler::generateSamples(sampleExtents, 
+                                                  _resolution, 25);
 
     std::cout << "Finished Generating " << samples.size() << 
                  " samples." << std::endl;
+    std::cout << std::endl;
 
     std::cout << "Generating Voronoi diagram with " << samples.size() << 
                  " points." << std::endl;
 
-    dcel::DCEL V = Voronoi::voronoi(samples);
+    _voronoi = Voronoi::voronoi(samples);
 
     std::cout << "Finished generating Voronoi diagram." << std::endl;
-    std::cout << "# Vertices:   " << V.vertices.size() << std::endl;
-    std::cout << "# Half Edges: " << V.edges.size() << std::endl;
-    std::cout << "# Faces:      " << V.faces.size() << std::endl;
+    std::cout << "# Vertices:   " << _voronoi.vertices.size() << std::endl;
+    std::cout << "# Half Edges: " << _voronoi.edges.size() << std::endl;
+    std::cout << "# Faces:      " << _voronoi.faces.size() << std::endl;
+    std::cout << std::endl;
 
-    _voronoi = V;
+    std::cout << "Initializing map vertices." << std::endl;
+    _vertexMap = VertexMap(&_voronoi, _extents);
+    std::cout << "Finished initializing map vertices." << std::endl;
+    std::cout << "# Vertices: " << _vertexMap.vertices.size() << std::endl;
+    std::cout << "# Interior: " << _vertexMap.interior.size() << std::endl;
+    std::cout << "# Edge:     " << _vertexMap.edge.size() << std::endl;
+    std::cout << std::endl;
+
     _isInitialized = true;
 }
 
@@ -69,6 +87,59 @@ void gen::MapGenerator::outputVoronoiDiagram(std::string filename) {
     
     json output;
     output["faces"] = faceVertices;
+    output["extents"] = _getExtentsJSON();
+
+    std::ofstream file(filename);
+    file << output;
+    file.close();
+}
+
+void gen::MapGenerator::outputVertices(std::string filename) {
+    if (!_isInitialized) {
+        throw std::runtime_error("MapGenerator must be initialized.");
+    }
+
+    _outputVertices(_vertexMap.vertices, filename);
+}
+
+void gen::MapGenerator::outputEdgeVertices(std::string filename) {
+    if (!_isInitialized) {
+        throw std::runtime_error("MapGenerator must be initialized.");
+    }
+
+    _outputVertices(_vertexMap.edge, filename);
+}
+
+void gen::MapGenerator::outputInteriorVertices(std::string filename) {
+    if (!_isInitialized) {
+        throw std::runtime_error("MapGenerator must be initialized.");
+    }
+
+    _outputVertices(_vertexMap.interior, filename);
+}
+
+jsoncons::json gen::MapGenerator::_getExtentsJSON() {
+    jsoncons::json extents;
+    extents["minx"] = _extents.minx;
+    extents["miny"] = _extents.miny;
+    extents["maxx"] = _extents.maxx;
+    extents["maxy"] = _extents.maxy;
+
+    return extents;
+}
+
+void gen::MapGenerator::_outputVertices(std::vector<dcel::Vertex> &verts, 
+                                        std::string filename) {
+    std::vector<double> coordinates;
+    coordinates.reserve(2*_vertexMap.edge.size());
+    for (unsigned int i = 0; i < verts.size(); i++) {
+        coordinates.push_back(verts[i].position.x);
+        coordinates.push_back(verts[i].position.y);
+    }
+
+    jsoncons::json output;
+    output["vertices"] = coordinates;
+    output["extents"] = _getExtentsJSON();
 
     std::ofstream file(filename);
     file << output;
