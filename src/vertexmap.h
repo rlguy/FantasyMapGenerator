@@ -13,7 +13,7 @@
 namespace gen {
 
 enum class VertexType : char { 
-    edge   = 0x00, 
+    edge = 0x00, 
     interior = 0x01
 };
 
@@ -25,7 +25,8 @@ public:
 
     unsigned int size();
     void getNeighbours(dcel::Vertex v, std::vector<dcel::Vertex> &nbs);
-    int getMapIndex(dcel::Vertex &v);
+    void getNeighbourIndices(dcel::Vertex v, std::vector<int> &nbs);
+    int getVertexIndex(dcel::Vertex &v);
     bool isVertex(dcel::Vertex &v);
     bool isEdge(dcel::Vertex &v);
     bool isInterior(dcel::Vertex &v);

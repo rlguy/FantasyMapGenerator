@@ -53,9 +53,25 @@ void gen::VertexMap::getNeighbours(dcel::Vertex v,
     } while (h.id != startRef);
 }
 
-int gen::VertexMap::getMapIndex(dcel::Vertex &v) {
+void gen::VertexMap::getNeighbourIndices(dcel::Vertex v, std::vector<int> &nbs) {
+    dcel::HalfEdge h = _dcel->incidentEdge(v);
+    dcel::Ref startRef = h.id;
+
+    dcel::HalfEdge twin;
+    dcel::Vertex n;
+    do {
+        twin = _dcel->twin(h);
+        n = _dcel->origin(twin);
+        if (_extents.containsPoint(n.position)) {
+            nbs.push_back(getVertexIndex(n));
+        }
+        h = _dcel->next(twin);
+    } while (h.id != startRef);
+}
+
+int gen::VertexMap::getVertexIndex(dcel::Vertex &v) {
     if (!_isInRange(v.id.ref)) {
-        throw std::range_error("gen::VertexMap::getMapIndex");
+        throw std::range_error("Index out of range:" + v.id.ref);
     }
     return _vertexIdToMapIndex[v.id.ref];
 }
@@ -64,21 +80,21 @@ bool gen::VertexMap::isVertex(dcel::Vertex &v) {
     if (!_isInRange(v.id.ref)) {
         return false;
     }
-    return getMapIndex(v) != -1;
+    return getVertexIndex(v) != -1;
 }
 
 bool gen::VertexMap::isEdge(dcel::Vertex &v) {
     if (!_isInRange(v.id.ref)) {
         return false;
     }
-    return _vertexTypes[getMapIndex(v)] == VertexType::edge;
+    return _vertexTypes[getVertexIndex(v)] == VertexType::edge;
 }
 
 bool gen::VertexMap::isInterior(dcel::Vertex &v) {
     if (!_isInRange(v.id.ref)) {
         return false;
     }
-    return _vertexTypes[getMapIndex(v)] == VertexType::interior;
+    return _vertexTypes[getVertexIndex(v)] == VertexType::interior;
 }
 
 bool gen::VertexMap::_isBoundaryVertex(dcel::Vertex &v) {
