@@ -35,3 +35,7 @@ and a set of operations:
 - setSeaLevel - Translate the height map so that the new sea level is at zero
 
 ![alt tag](http://rlguy.com/map_generation/images/heightmap_primitives.jpg)
+
+Contour lines are generated from the Voronoi edges. If a countour line is generated for some elevation h, a Voronoi edge will be included in the countour if one of its adjacent faces has a height less than h while the other has a height greater than or equal to h.
+
+![alt tag](http://rlguy.com/map_generation/images/heightmap_contour.jpg)

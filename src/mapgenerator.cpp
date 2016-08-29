@@ -327,31 +327,20 @@ void gen::MapGenerator::outputHeightMap(std::string filename) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
 
-    std::vector<double> facecolors;
-    facecolors.reserve(_voronoi.faces.size());
-
-    dcel::Face f;
-    dcel::Vertex v;
-    std::vector<dcel::HalfEdge> edges;
-    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
-        f = _voronoi.faces[i];
-
-        edges.clear();
-        _voronoi.getOuterComponents(f, edges);
-
-        double sum = 0.0;
-        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
-            v = _voronoi.origin(edges[eidx]);
-            if (_heightMap.isNode(v)) {
-                sum += _heightMap(v);
-            }
-        }
-        double avg = sum / edges.size();
-        facecolors.push_back(avg);
-    }
+    std::vector<double> facecolors = _computeFaceHeights();
 
     jsoncons::json output;
     output["colors"] = facecolors;
+
+    std::ofstream file(filename);
+    file << output;
+    file.close();
+}
+
+void gen::MapGenerator::outputContour(std::string filename, double isolevel) {
+    jsoncons::json output;
+    output["contour"] = _computeContour(isolevel);
+    output["extents"] = _getExtentsJSON();
 
     std::ofstream file(filename);
     file << output;
@@ -384,4 +373,83 @@ void gen::MapGenerator::_outputVertices(std::vector<dcel::Vertex> &verts,
     std::ofstream file(filename);
     file << output;
     file.close();
+}
+
+std::vector<double> gen::MapGenerator::_computeFaceHeights() {
+    std::vector<double> faceheights;
+    faceheights.reserve(_voronoi.faces.size());
+
+    dcel::Face f;
+    dcel::Vertex v;
+    std::vector<dcel::HalfEdge> edges;
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        f = _voronoi.faces[i];
+
+        edges.clear();
+        _voronoi.getOuterComponents(f, edges);
+
+        double sum = 0.0;
+        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
+            v = _voronoi.origin(edges[eidx]);
+            if (_heightMap.isNode(v)) {
+                sum += _heightMap(v);
+            }
+        }
+        double avg = sum / edges.size();
+        faceheights.push_back(avg);
+    }
+
+    return faceheights;
+}
+
+std::vector<double> gen::MapGenerator::_computeContour(double isolevel) {
+    std::vector<double> contour;
+    std::vector<double> faceheights = _computeFaceHeights();
+    std::vector<bool> isEdgeInContour(_voronoi.edges.size(), false);
+
+    dcel::HalfEdge h;
+    dcel::Point p1, p2;
+    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
+        h = _voronoi.edges[i];
+        if (!_isEdgeInMap(h) || isEdgeInContour[h.id.ref]) {
+            continue;
+        }
+
+        if (!_isContourEdge(h, faceheights, isolevel)) {
+            continue;
+        }
+
+        p1 = _voronoi.origin(h).position;
+        p2 = _voronoi.origin(_voronoi.twin(h)).position;
+
+        contour.push_back(p1.x);
+        contour.push_back(p1.y);
+        contour.push_back(p2.x);
+        contour.push_back(p2.y);
+
+        isEdgeInContour[h.id.ref] = true;
+        isEdgeInContour[h.twin.ref] = true;
+    }
+
+    return contour;
+}
+
+bool gen::MapGenerator::_isEdgeInMap(dcel::HalfEdge &h) {
+    dcel::Vertex v1 = _voronoi.origin(h);
+    dcel::Vertex v2 = _voronoi.origin(_voronoi.twin(h));
+
+    return _vertexMap.isVertex(v1) && _vertexMap.isVertex(v2);
+}
+
+bool gen::MapGenerator::_isContourEdge(dcel::HalfEdge &h, 
+                                       std::vector<double> &faceheights, 
+                                       double isolevel) {
+    dcel::Face f1 = _voronoi.incidentFace(h);
+    dcel::Face f2 = _voronoi.incidentFace(_voronoi.twin(h));
+    double iso1 = faceheights[f1.id.ref];
+    double iso2 = faceheights[f2.id.ref];
+    bool hasInside = iso1 < isolevel || iso2 < isolevel;
+    bool hasOutside = iso1 >= isolevel || iso2 >= isolevel;
+
+    return hasInside && hasOutside;
 }

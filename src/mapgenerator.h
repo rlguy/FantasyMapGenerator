@@ -40,11 +40,18 @@ public:
     void outputEdgeVertices(std::string filename);
     void outputInteriorVertices(std::string filename);
     void outputHeightMap(std::string filename);
+    void outputContour(std::string filename, double isolevel);
 
 private:
     jsoncons::json _getExtentsJSON();
     void _outputVertices(std::vector<dcel::Vertex> &verts, 
                          std::string filename);
+    std::vector<double> _computeFaceHeights();
+    std::vector<double> _computeContour(double isolevel);
+    bool _isEdgeInMap(dcel::HalfEdge &h);
+    bool _isContourEdge(dcel::HalfEdge &h, 
+                        std::vector<double> &faceheights, 
+                        double isolevel);
 
     Extents2d _extents;
     double _resolution;

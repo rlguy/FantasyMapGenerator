@@ -218,7 +218,7 @@ void Voronoi::_initVoronoiFaceFromEdgeLoop(std::vector<HalfEdge> &edgeLoop,
             eji = V.createHalfEdge();
             eji.origin = vj.id;
             eji.twin = eij.id;
-            V.updateHalfEdge(eij);
+            V.updateHalfEdge(eji);
 
             std::pair<int, int> vertexEdge(vi.id.ref, eji.id.ref);
             vertexEdges[vj.id.ref].push_back(vertexEdge);
