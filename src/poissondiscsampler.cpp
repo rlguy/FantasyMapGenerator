@@ -63,7 +63,7 @@ dcel::Point PoissonDiscSampler::_randomPoint(Extents2d &extents) {
     return Point(px, py);
 }
 
-dcel::Point PoissonDiscSampler::_randomDiscPoint(Point &center, double r) {
+dcel::Point PoissonDiscSampler::_randomDiscPoint(dcel::Point &center, double r) {
     double angle = _randomDouble(0, 2*3.141592653);
     double nx = sin(angle);
     double ny = cos(angle);
@@ -72,9 +72,9 @@ dcel::Point PoissonDiscSampler::_randomDiscPoint(Point &center, double r) {
     return Point(center.x + nx*rl, center.y + ny*rl);
 }
 
-bool PoissonDiscSampler::_findDiscPoint(Point &center, double r, int k, 
-                                        std::vector<Point> &points, 
-                                        SampleGrid &grid, Point *p) {
+bool PoissonDiscSampler::_findDiscPoint(dcel::Point &center, double r, int k, 
+                                        std::vector<dcel::Point> &points, 
+                                        SampleGrid &grid, dcel::Point *p) {
     for (int i = 0; i < k; i++) {
         Point sample = _randomDiscPoint(center, r);
         if (!grid.bounds.containsPoint(sample.x, sample.y)) {
@@ -90,8 +90,8 @@ bool PoissonDiscSampler::_findDiscPoint(Point &center, double r, int k,
     return false;
 }
 
-bool PoissonDiscSampler::_isSampleValid(Point &p, double r, 
-                                        std::vector<Point> &points, 
+bool PoissonDiscSampler::_isSampleValid(dcel::Point &p, double r, 
+                                        std::vector<dcel::Point> &points, 
                                         SampleGrid &grid) {
     GridIndex g = grid.getCell(p);
     int sampleid = grid.getSample(g);

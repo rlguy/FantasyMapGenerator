@@ -53,10 +53,6 @@ void gen::MapGenerator::initialize() {
     std::cout << std::endl;
 
     _heightMap = NodeMap<double>(&_vertexMap, 0);
-    for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        //_heightMap.set(i, (double)rand() * ((double)i / _heightMap.size()));
-    }
-
     _isInitialized = true;
 }
 
@@ -134,10 +130,10 @@ void gen::MapGenerator::setSeaLevel(double level) {
     }
 
     /* 
-        Translate height map so that level is at 0
+        Translate height map so that level is at 0.5
     */
     for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        double newval = _heightMap(i) - level;
+        double newval = _heightMap(i) - (level - 0.5);
         _heightMap.set(i, newval);
     }
 }
@@ -259,6 +255,23 @@ void gen::MapGenerator::addSlope(double px, double py, double dirx, double diry,
     }
 }
 
+void gen::MapGenerator::erode()  {
+    erode(_defaultErodeAmount);
+}
+
+void gen::MapGenerator::erode(double amount) {
+    if (!_isInitialized) {
+        throw std::runtime_error("MapGenerator must be initialized.");
+    }
+
+    NodeMap<double> erosionMap(&_vertexMap, 0.0);
+    _calculateErosionMap(erosionMap);
+
+    for (unsigned int i = 0; i < _heightMap.size(); i++) {
+        _heightMap.set(i, _heightMap(i) - amount * erosionMap(i));
+    }
+}
+
 void gen::MapGenerator::outputVoronoiDiagram(std::string filename) {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
@@ -327,7 +340,7 @@ void gen::MapGenerator::outputHeightMap(std::string filename) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
 
-    std::vector<double> facecolors = _computeFaceHeights();
+    std::vector<double> facecolors = _computeFaceHeights(_heightMap);
 
     jsoncons::json output;
     output["colors"] = facecolors;
@@ -375,7 +388,7 @@ void gen::MapGenerator::_outputVertices(std::vector<dcel::Vertex> &verts,
     file.close();
 }
 
-std::vector<double> gen::MapGenerator::_computeFaceHeights() {
+std::vector<double> gen::MapGenerator::_computeFaceHeights(NodeMap<double> &heightMap) {
     std::vector<double> faceheights;
     faceheights.reserve(_voronoi.faces.size());
 
@@ -391,8 +404,8 @@ std::vector<double> gen::MapGenerator::_computeFaceHeights() {
         double sum = 0.0;
         for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
             v = _voronoi.origin(edges[eidx]);
-            if (_heightMap.isNode(v)) {
-                sum += _heightMap(v);
+            if (heightMap.isNode(v)) {
+                sum += heightMap(v);
             }
         }
         double avg = sum / edges.size();
@@ -404,7 +417,7 @@ std::vector<double> gen::MapGenerator::_computeFaceHeights() {
 
 std::vector<double> gen::MapGenerator::_computeContour(double isolevel) {
     std::vector<double> contour;
-    std::vector<double> faceheights = _computeFaceHeights();
+    std::vector<double> faceheights = _computeFaceHeights(_heightMap);
     std::vector<bool> isEdgeInContour(_voronoi.edges.size(), false);
 
     dcel::HalfEdge h;
@@ -452,4 +465,190 @@ bool gen::MapGenerator::_isContourEdge(dcel::HalfEdge &h,
     bool hasOutside = iso1 >= isolevel || iso2 >= isolevel;
 
     return hasInside && hasOutside;
+}
+
+void gen::MapGenerator::_calculateErosionMap(NodeMap<double> &erosionMap) {
+    _fillDepressions();
+
+    NodeMap<double> fluxMap(&_vertexMap, 0.0);
+    _calculateFluxMap(fluxMap);
+
+    NodeMap<double> slopeMap(&_vertexMap, 0.0);
+    _calculateSlopeMap(slopeMap);
+
+    for (unsigned int i = 0; i < erosionMap.size(); i++) {
+        double flux = fluxMap(i);
+        double slope = slopeMap(i);
+        double river = _erosionRiverFactor * sqrt(flux) * slope;
+        double creep = _erosionCreepFactor * slope * slope;
+        double erosion = fmin(river + creep, _maxErosionRate);
+        erosionMap.set(i, erosion);
+    }
+
+    double max = erosionMap.max();
+    for (unsigned int i = 0; i < erosionMap.size(); i++) {
+        erosionMap.set(i, erosionMap(i) / max);
+    }
+}
+
+void gen::MapGenerator::_fillDepressions() {
+    NodeMap<double> finalHeightMap(&_vertexMap, _heightMap.max());
+    dcel::Vertex v;
+    for (unsigned int i = 0; i < _vertexMap.edge.size(); i++) {
+        v = _vertexMap.edge[i];
+        finalHeightMap.set(v, _heightMap(v));
+    }
+
+    double eps = 1e-5;
+    std::vector<double> nbs;
+    for (;;) {
+        bool heightUpdated = false;
+        for (unsigned int i = 0; i < _heightMap.size(); i++) {
+            if (_heightMap(i) == finalHeightMap(i)) {
+                continue;
+            }
+
+            nbs.clear();
+            finalHeightMap.getNeighbours(i, nbs);
+            for (unsigned int nidx = 0; nidx < nbs.size(); nidx++) {
+                if (_heightMap(i) >= nbs[nidx] + eps) {
+                    finalHeightMap.set(i, _heightMap(i));
+                    heightUpdated = true;
+                    break;
+                }
+
+                double hval = nbs[nidx] + eps;
+                if ((finalHeightMap(i) > hval) && (hval > _heightMap(i))) {
+                    finalHeightMap.set(i, hval);
+                    heightUpdated = true;
+                }
+            }
+        }
+
+        if (!heightUpdated) {
+            break;
+        }
+    }
+
+    _heightMap = finalHeightMap;
+}
+
+void gen::MapGenerator::_calculateFlowMap(NodeMap<int> &flowMap) {
+    dcel::Vertex v, n;
+    std::vector<dcel::Vertex> nbs;
+    for (unsigned int i = 0; i < _vertexMap.interior.size(); i++) {
+        v = _vertexMap.interior[i];
+
+        nbs.clear();
+        _vertexMap.getNeighbours(v, nbs);
+        dcel::Vertex minVertex;
+        double minHeight = _heightMap(v);
+        for (unsigned int nidx = 0; nidx < nbs.size(); nidx++) {
+            n = nbs[nidx];
+            if (!_vertexMap.isVertex(n)) {
+                continue;
+            }
+
+            if (_heightMap(n) < minHeight) {
+                minHeight = _heightMap(n);
+                minVertex = n;
+            }
+        }
+
+        flowMap.set(v, flowMap.getNodeIndex(minVertex));
+    }
+}
+
+void gen::MapGenerator::_calculateFluxMap(NodeMap<double> &fluxMap) {
+    NodeMap<int> flowMap(&_vertexMap, -1);
+    _calculateFlowMap(flowMap);
+
+    for (unsigned int i = 0; i < flowMap.size(); i++) {
+        int next = i;
+        while (next != -1) {
+            fluxMap.set(next, fluxMap(next) + 1.0);
+            next = flowMap(next);
+        }
+    }
+
+    double maxFlux = _calculateFluxCap(fluxMap);
+    for (unsigned int i = 0; i < fluxMap.size(); i++) {
+        double f = fluxMap(i);
+        f = fmin(maxFlux, f);
+        f /= maxFlux;
+        fluxMap.set(i, f);
+    }
+}
+
+double gen::MapGenerator::_calculateFluxCap(NodeMap<double> &fluxMap) {
+    double max = fluxMap.max();
+
+    int nbins = 1000;
+    int bins[1000];
+    for (int i = 0; i < nbins; i++) {
+        bins[i] = 0;
+    }
+
+    double step = (double)max / (double)nbins;
+    double invstep = 1.0 / step;
+    for (unsigned int i = 0; i < fluxMap.size(); i++) {
+        double f = fluxMap(i);
+        int binidx = floor(f * invstep);
+        bins[binidx]++;
+    }
+
+    double acc = 0.0;
+    double maxflux = 0.0;
+    for (int i = 0; i < nbins; i++) {
+        double pct = (double)bins[i] / (double)fluxMap.size();
+        acc += pct;
+        if (acc > _fluxCapPercentile) {
+            maxflux = (i + 1)*step;
+            break;
+        }
+    }
+
+    return maxflux;
+}
+
+void gen::MapGenerator::_calculateSlopeMap(NodeMap<double> &slopeMap) {
+    for (unsigned int i = 0; i < slopeMap.size(); i++) {
+        slopeMap.set(i, _calculateSlope(i));
+    }
+}
+
+double gen::MapGenerator::_calculateSlope(int i) {
+    dcel::Vertex v = _vertexMap.vertices[i];
+    if (!_vertexMap.isInterior(v)) {
+        return 0.0;
+    }
+
+    std::vector<dcel::Vertex> nbs;
+    nbs.reserve(3);
+    _vertexMap.getNeighbours(v, nbs);
+    if (nbs.size() != 3) {
+        return 0.0;
+    }
+
+    dcel::Point p0 = nbs[0].position;
+    dcel::Point p1 = nbs[1].position;
+    dcel::Point p2 = nbs[2].position;
+
+    double v0x = p1.x - p0.x;
+    double v0y = p1.y - p0.y;
+    double v0z = _heightMap(nbs[1]) - _heightMap(nbs[0]);
+    double v1x = p2.x - p0.x;
+    double v1y = p2.y - p0.y;
+    double v1z = _heightMap(nbs[2]) - _heightMap(nbs[0]);
+
+    double nx = v0y*v1z - v0z*v1y;
+    double ny = v0z*v1x - v0x*v1z;
+    double nz = v0x*v1y - v0y*v1x;
+    double invlen = 1.0 / sqrt(nx*nx + ny*ny + nz*nz);
+    nx *= invlen;
+    ny *= invlen;
+
+    double slope = sqrt(nx*nx + ny*ny);
+
+    return slope;
 }

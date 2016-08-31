@@ -10,7 +10,6 @@ gen::VertexMap::VertexMap(dcel::DCEL *V, Extents2d extents) :
     _vertexIdToMapIndex = std::vector<int>(_dcel->vertices.size(), -1);
 
     dcel::Vertex v;
-    std::vector<dcel::Vertex> neighbours;
     for (unsigned int i = 0; i < _dcel->vertices.size(); i++) {
         v = _dcel->vertices[i];
         if (!extents.containsPoint(v.position) || _isBoundaryVertex(v)) {
@@ -20,14 +19,12 @@ gen::VertexMap::VertexMap(dcel::DCEL *V, Extents2d extents) :
         vertices.push_back(v);
         _vertexIdToMapIndex[v.id.ref] = vertices.size() - 1;
 
-        neighbours.clear();
-        getNeighbours(v, neighbours);
-        if (neighbours.size() < 3) {
-            edge.push_back(v);
-            _vertexTypes.push_back(VertexType::edge);
-        } else {
+        if (_getVertexType(v) == VertexType::interior) {
             interior.push_back(v);
             _vertexTypes.push_back(VertexType::interior);
+        } else {
+             edge.push_back(v);
+            _vertexTypes.push_back(VertexType::edge);
         }
     }
 }
@@ -46,7 +43,7 @@ void gen::VertexMap::getNeighbours(dcel::Vertex v,
     do {
         twin = _dcel->twin(h);
         n = _dcel->origin(twin);
-        if (_extents.containsPoint(n.position)) {
+        if (isVertex(n)) {
             nbs.push_back(n);
         }
         h = _dcel->next(twin);
@@ -62,7 +59,7 @@ void gen::VertexMap::getNeighbourIndices(dcel::Vertex v, std::vector<int> &nbs) 
     do {
         twin = _dcel->twin(h);
         n = _dcel->origin(twin);
-        if (_extents.containsPoint(n.position)) {
+        if (isVertex(n)) {
             nbs.push_back(getVertexIndex(n));
         }
         h = _dcel->next(twin);
@@ -121,6 +118,29 @@ bool gen::VertexMap::_isBoundaryVertex(dcel::Vertex &v) {
     return false;
 }
 
+gen::VertexType gen::VertexMap::_getVertexType(dcel::Vertex &v) {
+    dcel::HalfEdge h = _dcel->incidentEdge(v);
+    dcel::Ref startRef = h.id;
+
+    dcel::HalfEdge twin;
+    dcel::Vertex n;
+    int ncount = 0;
+    do {
+        twin = _dcel->twin(h);
+        n = _dcel->origin(twin);
+        if (_extents.containsPoint(n.position) && !_isBoundaryVertex(n)) {
+            ncount++;
+        }
+        h = _dcel->next(twin);
+    } while (h.id != startRef);
+
+    if (ncount < 3) {
+        return VertexType::edge;
+    } else {
+        return VertexType::interior;
+    }
+}
+
 bool gen::VertexMap::_isInRange(int id) {
-    return id >= 0 || id < (int)_vertexIdToMapIndex.size();
+    return id >= 0 && id < (int)_vertexIdToMapIndex.size();
 }

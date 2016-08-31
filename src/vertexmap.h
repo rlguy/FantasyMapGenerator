@@ -38,6 +38,7 @@ public:
 private:
 	bool _isBoundaryVertex(dcel::Vertex &v);
 	bool _isInRange(int id);
+    VertexType _getVertexType(dcel::Vertex &v);
 
 	dcel::DCEL *_dcel;
 	Extents2d _extents;

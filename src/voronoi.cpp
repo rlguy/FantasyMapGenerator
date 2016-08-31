@@ -1,6 +1,6 @@
 #include "voronoi.h"
 
-dcel::DCEL Voronoi::voronoi(std::vector<Point> &points) {
+dcel::DCEL Voronoi::voronoi(std::vector<dcel::Point> &points) {
     if (points.size() == 0) {
         return DCEL();
     }
@@ -9,7 +9,7 @@ dcel::DCEL Voronoi::voronoi(std::vector<Point> &points) {
     return delaunayToVoronoi(V);
 }
 
-dcel::DCEL Voronoi::delaunayToVoronoi(DCEL &T) {
+dcel::DCEL Voronoi::delaunayToVoronoi(dcel::DCEL &T) {
     DCEL V;
     std::vector<int> voronoiVertexToFaceTable;
     _createVoronoiVertices(T, V, voronoiVertexToFaceTable);
@@ -42,8 +42,8 @@ dcel::DCEL Voronoi::delaunayToVoronoi(DCEL &T) {
     return V;
 }
 
-void Voronoi::_createVoronoiVertices(DCEL &T, 
-                                    DCEL &V, std::vector<int> &vertexToFaceTable) {
+void Voronoi::_createVoronoiVertices(dcel::DCEL &T, 
+                                     dcel::DCEL &V, std::vector<int> &vertexToFaceTable) {
 
     for (unsigned int i = 0; i < T.faces.size(); i++) {
         if (T.faces[i].outerComponent.ref == -1) {
@@ -56,7 +56,7 @@ void Voronoi::_createVoronoiVertices(DCEL &T,
     }
 }
 
-dcel::Point Voronoi::_computeVoronoiVertex(DCEL &T, Face &f) {
+dcel::Point Voronoi::_computeVoronoiVertex(dcel::DCEL &T, dcel::Face &f) {
     // A voronoi vertex is a center of a circle that passes through
     // points p0, pi, pj
     HalfEdge h = T.outerComponent(f);
@@ -79,7 +79,7 @@ dcel::Point Voronoi::_computeVoronoiVertex(DCEL &T, Face &f) {
     return center;
 }
 
-bool Voronoi::_isBoundaryVertex(DCEL &T, Vertex &v) {
+bool Voronoi::_isBoundaryVertex(dcel::DCEL &T, dcel::Vertex &v) {
     if (v.incidentEdge.ref == -1) {
         return true;
     }
@@ -104,7 +104,7 @@ bool Voronoi::_isBoundaryVertex(DCEL &T, Vertex &v) {
 }
 
 Voronoi::VertexEdgeTable Voronoi::_initVertexEdgeTable(
-                                  DCEL &T, DCEL &V, 
+                                  dcel::DCEL &T, dcel::DCEL &V, 
                                   std::vector<int> &delaunayFaceToVertexTable) {
     VertexEdgeTable vertexEdges;
     vertexEdges.reserve(V.vertices.size());
@@ -144,7 +144,7 @@ Voronoi::VertexEdgeTable Voronoi::_initVertexEdgeTable(
     return vertexEdges;
 }
 
-void Voronoi::_initVertexIncidentEdges(DCEL &V, VertexEdgeTable &vertexEdges) {
+void Voronoi::_initVertexIncidentEdges(dcel::DCEL &V, VertexEdgeTable &vertexEdges) {
     for (unsigned int i = 0; i < vertexEdges.size(); i++) {
         Ref refeij(vertexEdges[i][0].second);
         HalfEdge eij = V.getHalfEdge(refeij);
@@ -155,11 +155,11 @@ void Voronoi::_initVertexIncidentEdges(DCEL &V, VertexEdgeTable &vertexEdges) {
     }
 }
 
-void Voronoi::_getVoronoiCellEdgeLoop(Vertex &delaunayVertex,
-                                       DCEL &T, DCEL &V,
-                                       std::vector<int> &delaunayFaceToVertexTable,
-                                       VertexEdgeTable &vertexEdges,
-                                       std::vector<HalfEdge> &edgeLoop) {
+void Voronoi::_getVoronoiCellEdgeLoop(dcel::Vertex &delaunayVertex,
+                                      dcel::DCEL &T, dcel::DCEL &V,
+                                      std::vector<int> &delaunayFaceToVertexTable,
+                                      VertexEdgeTable &vertexEdges,
+                                      std::vector<dcel::HalfEdge> &edgeLoop) {
 
     std::vector<Face> incidentFaces;
     incidentFaces.reserve(6);
@@ -187,8 +187,8 @@ void Voronoi::_getVoronoiCellEdgeLoop(Vertex &delaunayVertex,
     }
 }
 
-void Voronoi::_initVoronoiFaceFromEdgeLoop(std::vector<HalfEdge> &edgeLoop,
-                                            DCEL &V,
+void Voronoi::_initVoronoiFaceFromEdgeLoop(std::vector<dcel::HalfEdge> &edgeLoop,
+                                           dcel::DCEL &V,
                                             VertexEdgeTable &vertexEdges) {
 
     Face cellface = V.createFace();

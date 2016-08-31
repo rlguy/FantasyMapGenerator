@@ -1,6 +1,6 @@
 #include "delaunay.h"
 
-dcel::DCEL Delaunay::triangulate(std::vector<Point> &points) {
+dcel::DCEL Delaunay::triangulate(std::vector<dcel::Point> &points) {
     if (points.size() == 0) {
         return DCEL();
     }
@@ -21,8 +21,8 @@ dcel::DCEL Delaunay::triangulate(std::vector<Point> &points) {
     return T;
 }
 
-void Delaunay::_getSuperTriangle(std::vector<Point> &points,
-                             Point *p1, Point *p2, Point *p3) {
+void Delaunay::_getSuperTriangle(std::vector<dcel::Point> &points,
+                                 dcel::Point *p1, dcel::Point *p2, dcel::Point *p3) {
     double eps = 1e-3;
     double minx = points[0].x;
     double miny = points[0].y;
@@ -55,7 +55,7 @@ void Delaunay::_getSuperTriangle(std::vector<Point> &points,
     p3->y = miny;
 }
 
-dcel::DCEL Delaunay::_initTriangulation(std::vector<Point> &points) {
+dcel::DCEL Delaunay::_initTriangulation(std::vector<dcel::Point> &points) {
     Point s1, s2, s3;
     _getSuperTriangle(points, &s1, &s2, &s3);
 
@@ -125,7 +125,7 @@ dcel::DCEL Delaunay::_initTriangulation(std::vector<Point> &points) {
 
 // Choose a random triangle, walk toward p until the containing 
 // triangle is found.
-dcel::Face Delaunay::_locateTriangleAtPoint(Point &p, DCEL &T) {
+dcel::Face Delaunay::_locateTriangleAtPoint(dcel::Point &p, dcel::DCEL &T) {
     Ref randfidx(rand() % T.faces.size());
     Face f = T.getFace(randfidx);
 
@@ -175,7 +175,7 @@ dcel::Face Delaunay::_locateTriangleAtPoint(Point &p, DCEL &T) {
     return Face();
 }
 
-bool Delaunay::_isPointInsideTriangle(Point &p, Face &f, DCEL &T) {
+bool Delaunay::_isPointInsideTriangle(dcel::Point &p, dcel::Face &f, dcel::DCEL &T) {
     HalfEdge h = T.outerComponent(f);
     Point p0 = T.origin(h).position;
     h = T.next(h);
@@ -189,7 +189,7 @@ bool Delaunay::_isPointInsideTriangle(Point &p, Face &f, DCEL &T) {
     return s >= 0 && t >= 0 && 1 - s - t >= 0;
 }
 
-dcel::Point Delaunay::_computeTriangleCentroid(Face &f, DCEL &T) {
+dcel::Point Delaunay::_computeTriangleCentroid(dcel::Face &f, dcel::DCEL &T) {
     HalfEdge h = T.outerComponent(f);
     Point p0 = T.origin(h).position;
     Point p1 = T.origin(T.next(h)).position;
@@ -199,13 +199,14 @@ dcel::Point Delaunay::_computeTriangleCentroid(Face &f, DCEL &T) {
     return Point(frac*(p0.x + p1.x + p2.x), frac*(p0.y + p1.y + p2.y));
 }
 
-bool Delaunay::_isSegmentIntersectingEdge(Point &A, Point &B, HalfEdge &h, DCEL &T) {
+bool Delaunay::_isSegmentIntersectingEdge(dcel::Point &A, dcel::Point &B, 
+                                          dcel::HalfEdge &h, dcel::DCEL &T) {
     Point C = T.origin(h).position;
     Point D = T.origin(T.twin(h)).position;
     return Geometry::lineSegmentIntersection(A, B, C, D);
 }
 
-double Delaunay::_pointToEdgeDistance(Point &p0, HalfEdge &h, DCEL &T) {
+double Delaunay::_pointToEdgeDistance(dcel::Point &p0, dcel::HalfEdge &h, dcel::DCEL &T) {
     Point p1 = T.origin(h).position;
     Point p2 = T.origin(T.twin(h)).position;
 
@@ -216,7 +217,7 @@ double Delaunay::_pointToEdgeDistance(Point &p0, HalfEdge &h, DCEL &T) {
     return fabs((vx*(p1.y - p0.y) - (p1.x - p0.x)*vy) / len);
 }
 
-void Delaunay::_insertPointIntoTriangulation(Point p, Face f, DCEL &T) {
+void Delaunay::_insertPointIntoTriangulation(dcel::Point p, dcel::Face f, dcel::DCEL &T) {
     double eps = 1e-9;
     int closeEdgeCount = 0;
     HalfEdge closeEdge;
@@ -246,7 +247,7 @@ void Delaunay::_insertPointIntoTriangulation(Point p, Face f, DCEL &T) {
     }
 }
 
-void Delaunay::_insertPointIntoTriangle(Point p, Face f, DCEL &T) {
+void Delaunay::_insertPointIntoTriangle(dcel::Point p, dcel::Face f, dcel::DCEL &T) {
     // existing components
     HalfEdge eij = T.outerComponent(f);
     HalfEdge ejk = T.next(eij);
@@ -346,7 +347,8 @@ void Delaunay::_insertPointIntoTriangle(Point p, Face f, DCEL &T) {
     _legalizeEdge(pr, eki, T);
 }
 
-void Delaunay::_insertPointIntoTriangleEdge(Point p, Face f, HalfEdge h, DCEL &T) {
+void Delaunay::_insertPointIntoTriangleEdge(dcel::Point p, dcel::Face f, 
+                                            dcel::HalfEdge h, dcel::DCEL &T) {
     // existing components
     HalfEdge eij = h;
     HalfEdge ejk = T.next(eij);
@@ -476,7 +478,7 @@ void Delaunay::_insertPointIntoTriangleEdge(Point p, Face f, HalfEdge h, DCEL &T
     _legalizeEdge(pr, eki, T);
 }
 
-bool Delaunay::_isEdgeLegal(Vertex v, HalfEdge e, DCEL &T) {
+bool Delaunay::_isEdgeLegal(dcel::Vertex v, dcel::HalfEdge e, dcel::DCEL &T) {
     if (T.isBoundary(T.twin(e))) {
         return true;
     }
@@ -520,7 +522,7 @@ bool Delaunay::_isEdgeLegal(Vertex v, HalfEdge e, DCEL &T) {
     return distsq >= crsq;
 }
 
-void Delaunay::_legalizeEdge(Vertex pr, HalfEdge eij, DCEL &T) {
+void Delaunay::_legalizeEdge(dcel::Vertex pr, dcel::HalfEdge eij, dcel::DCEL &T) {
     if (_isEdgeLegal(pr, eij, T)) {
         return;
     }
@@ -598,7 +600,7 @@ void Delaunay::_legalizeEdge(Vertex pr, HalfEdge eij, DCEL &T) {
     _legalizeEdge(pr, ekj, T);
 }
 
-void Delaunay::_getCleanupInvalidFaces(DCEL &T, std::vector<Face> &invalidFaces) {
+void Delaunay::_getCleanupInvalidFaces(dcel::DCEL &T, std::vector<dcel::Face> &invalidFaces) {
     Vertex p1 = T.vertices[0];
     Vertex p2 = T.vertices[1];
     Vertex p3 = T.vertices[2];
@@ -607,9 +609,9 @@ void Delaunay::_getCleanupInvalidFaces(DCEL &T, std::vector<Face> &invalidFaces)
     T.getIncidentFaces(p3, invalidFaces);
 }
 
-void Delaunay::_getCleanupInvalidEdges(DCEL &T, 
-                                       std::vector<HalfEdge> &invalidEdges,
-                                       std::vector<HalfEdge> &invalidTwins) {
+void Delaunay::_getCleanupInvalidEdges(dcel::DCEL &T, 
+                                       std::vector<dcel::HalfEdge> &invalidEdges,
+                                       std::vector<dcel::HalfEdge> &invalidTwins) {
     Vertex p1 = T.vertices[0];
     Vertex p2 = T.vertices[1];
     Vertex p3 = T.vertices[2];
@@ -623,9 +625,9 @@ void Delaunay::_getCleanupInvalidEdges(DCEL &T,
     }
 }
 
-void Delaunay::_getCleanupUpdateVertices(DCEL &T, 
-                                         std::vector<HalfEdge> &invalidEdges,
-                                         std::vector<Vertex> &vertices) {
+void Delaunay::_getCleanupUpdateVertices(dcel::DCEL &T, 
+                                         std::vector<dcel::HalfEdge> &invalidEdges,
+                                         std::vector<dcel::Vertex> &vertices) {
     Vertex p1 = T.vertices[0];
     Vertex p2 = T.vertices[1];
     Vertex p3 = T.vertices[2];
@@ -646,8 +648,8 @@ void Delaunay::_getCleanupUpdateVertices(DCEL &T,
     }
 }
 
-void Delaunay::_updateCleanupVertices(DCEL &T, 
-                                      std::vector<Vertex> &updateVertices,
+void Delaunay::_updateCleanupVertices(dcel::DCEL &T, 
+                                      std::vector<dcel::Vertex> &updateVertices,
                                       std::vector<bool> &invalidEdgeTable,
                                       std::vector<bool> &invalidFaceTable) {
 
@@ -680,9 +682,9 @@ void Delaunay::_updateCleanupVertices(DCEL &T,
     }
 }
 
-void Delaunay::_removeInvalidCleanupComponents(DCEL &T,
-                                               std::vector<HalfEdge> &invalidEdges,
-                                               std::vector<Face> &invalidFaces) {
+void Delaunay::_removeInvalidCleanupComponents(dcel::DCEL &T,
+                                               std::vector<dcel::HalfEdge> &invalidEdges,
+                                               std::vector<dcel::Face> &invalidFaces) {
     for (unsigned int i = 0; i < invalidEdges.size(); i++) {
         HalfEdge h = invalidEdges[i];
         HalfEdge twin = T.twin(h);
@@ -715,7 +717,7 @@ void Delaunay::_removeInvalidCleanupComponents(DCEL &T,
     T.updateVertex(p3);
 }
 
-void Delaunay::_cleanup(DCEL &T) {
+void Delaunay::_cleanup(dcel::DCEL &T) {
 
     std::vector<Face> invalidFaces;
     _getCleanupInvalidFaces(T, invalidFaces);

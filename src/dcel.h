@@ -102,8 +102,8 @@ public:
 	}
 
 	inline Vertex getVertex(int id) {
-		if (id < 0 || id >= (int)vertices.size()) {
-			throw std::range_error("");
+		if (!_isVertexInRange(id)) {
+			throw std::range_error("Vertex out of range: " + id);
 		}
 		return vertices[id];
 	}
@@ -113,8 +113,8 @@ public:
 	}
 
 	inline HalfEdge getHalfEdge(int id) {
-		if (id < 0 || id >= (int)edges.size()) {
-			throw std::range_error("");
+		if (!_isHalfEdgeInRange(id)) {
+			throw std::range_error("HalfEdge out of range: " + id);
 		}
 		return edges[id];
 	}
@@ -124,92 +124,116 @@ public:
 	}
 
 	inline Face getFace(int id) {
-		if (id < 0 || id >= (int)faces.size()) {
-			throw std::range_error("");
+		if (!_isFaceInRange(id)) {
+			throw std::range_error("Face out of range: " + id);
 		}
 		return faces[id];
 	}
 
 	inline void updateVertex(Vertex &v) {
-		if (v.id.ref < 0 || v.id.ref >= (int)vertices.size()) {
-			throw std::range_error("");
+		if (!_isVertexInRange(v)) {
+			throw std::range_error("Vertex out of range: " + v.id.ref);
 		}
 		vertices[v.id.ref] = v;
 	}
 
 	inline void updateHalfEdge(HalfEdge &e) {
-		if (e.id.ref < 0 || e.id.ref >= (int)edges.size()) {
-			throw std::range_error("");
+		if (!_isHalfEdgeInRange(e)) {
+			throw std::range_error("HalfEdge out of range: " + e.id.ref);
 		}
 		edges[e.id.ref] = e;
 	}
 
 	inline void updateFace(Face &f) {
-		if (f.id.ref < 0 || f.id.ref >= (int)faces.size()) {
-			throw std::range_error("");
+		if (!_isFaceInRange(f)) {
+			throw std::range_error("Face out of range: " + f.id.ref);
 		}
 		faces[f.id.ref] = f;
 	}
 
 	inline Vertex origin(HalfEdge h) {
-		if (h.origin.ref < 0 || h.origin.ref >= (int)vertices.size()) {
-			throw std::range_error("");
+		if (!_isVertexInRange(h.origin)) {
+			throw std::range_error("HalfEdge origin out of range: " + h.origin.ref);
 		}
 		return vertices[h.origin.ref];
 	}
 
 	inline HalfEdge twin(HalfEdge h) {
-		if (h.twin.ref < 0 || h.twin.ref >= (int)edges.size()) {
-			throw std::range_error("");
+		if (!_isHalfEdgeInRange(h.twin)) {
+			throw std::range_error("HalfEdge twin out of range: " + h.twin.ref);
 		}
 		return edges[h.twin.ref];
 	}
 
 	inline Face incidentFace(HalfEdge h) {
-		if (h.incidentFace.ref < 0 || h.incidentFace.ref >= (int)faces.size()) {
-			throw std::range_error("");
+		if (!_isFaceInRange(h.incidentFace)) {
+			throw std::range_error("HalfEdge incident face out of range: " + h.incidentFace.ref);
 		}
 		return faces[h.incidentFace.ref];
 	}
 
 	inline HalfEdge next(HalfEdge h) {
-		if (h.next.ref < 0 || h.next.ref >= (int)edges.size()) {
-			throw std::range_error("");
+		if (!_isHalfEdgeInRange(h.next)) {
+			throw std::range_error("HalfEdge next of range: " + h.next.ref);
 		}
 		return edges[h.next.ref];
 	}
 
 	inline HalfEdge prev(HalfEdge h) {
-		if (h.prev.ref < 0 || h.prev.ref >= (int)edges.size()) {
-			throw std::range_error("");
+		if (!_isHalfEdgeInRange(h.prev)) {
+			throw std::range_error("HalfEdge prev of range: " + h.prev.ref);
 		}
 		return edges[h.prev.ref];
 	}
 
 	inline HalfEdge outerComponent(Face f) {
-		if (f.outerComponent.ref < 0 || f.outerComponent.ref >= (int)edges.size()) {
-			throw std::range_error("");
+		if (!_isHalfEdgeInRange(f.outerComponent)) {
+			throw std::range_error("HalfEdge outer component out of range: " + f.outerComponent.ref);
 		}
 		return edges[f.outerComponent.ref];
 	}
 
-	inline std::vector<HalfEdge> innerComponents(Face f) {
-		std::vector<HalfEdge> inner;
-		for (unsigned int i = 0; i < f.innerComponents.size(); i++) {
-			Ref r = f.innerComponents[i];
-			if (r.ref < 0 || r.ref >= (int)f.innerComponents.size()) {
-				throw std::range_error("");
-			}
-			inner.push_back(edges[f.innerComponents[i].ref]);
-		}
-		return inner;
-	}
-
 	inline HalfEdge incidentEdge(Vertex v) {
-		if (v.incidentEdge.ref < 0 || v.incidentEdge.ref >= (int)edges.size()) {
-			throw std::range_error("");
+		if (!_isHalfEdgeInRange(v.incidentEdge)) {
+			throw std::range_error("Vertex incident edge out of range: " + v.incidentEdge.ref);
 		}
 		return edges[v.incidentEdge.ref];
+	}
+
+	inline bool _isVertexInRange(Vertex &v) {
+		return v.id.ref >= 0 && v.id.ref < (int)vertices.size();
+	}
+
+	inline bool _isVertexInRange(Ref &id) {
+		return id.ref >= 0 && id.ref < (int)vertices.size();
+	}
+
+	inline bool _isVertexInRange(int id) {
+		return id >= 0 && id < (int)vertices.size();
+	}
+
+	inline bool _isHalfEdgeInRange(HalfEdge &h) {
+		return h.id.ref >= 0 && h.id.ref < (int)edges.size();
+	}
+
+	inline bool _isHalfEdgeInRange(Ref &id) {
+		return id.ref >= 0 && id.ref < (int)edges.size();
+	}
+
+	inline bool _isHalfEdgeInRange(int id) {
+		return id >= 0 && id < (int)edges.size();
+	}
+
+	inline bool _isFaceInRange(Face &f) {
+		return f.id.ref >= 0 && f.id.ref < (int)faces.size();
+	}
+
+	inline bool _isFaceInRange(Ref &id) {
+		return id.ref >= 0 && id.ref < (int)faces.size();
+	}
+
+	inline bool _isFaceInRange(int id) {
+		return id >= 0 && id < (int)faces.size();
 	}
 
 	void getOuterComponents(Face f, std::vector<HalfEdge> &edges);
@@ -219,7 +243,6 @@ public:
 	void getIncidentFaces(Vertex v, std::vector<Face> &faces);
 	void getIncidentFaces(Vertex v, std::vector<Ref> &faces);
 	bool isBoundary(HalfEdge h);
-	void removeEdge(HalfEdge h);
 
 	std::vector<Vertex> vertices;
 	std::vector<HalfEdge> edges;

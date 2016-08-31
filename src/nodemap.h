@@ -24,12 +24,34 @@ public:
         return _vertexMap->size();
     }
 
+    T min() {
+        T minval = _nodes[0];
+        for (unsigned int i = 0; i < _nodes.size(); i++) {
+            if (_nodes[i] < minval) {
+                minval = _nodes[i];
+            }
+        }
+        return minval;
+    }
+
+    T max() {
+        T maxval = _nodes[0];
+        for (unsigned int i = 0; i < _nodes.size(); i++) {
+            if (_nodes[i] > maxval) {
+                maxval = _nodes[i];
+            }
+        }
+        return maxval;
+    }
+
     int getNodeIndex(dcel::Vertex &v) {
         return _vertexMap->getVertexIndex(v);
     }
 
     void fill(T fillval) {
-        std::fill(_nodes.begin(), _nodes.end(), fillval);
+        for (unsigned int i = 0; i < _nodes.size(); i++) {
+            _nodes[i] = fillval;
+        }
     }
 
     T operator()(int idx) {
@@ -56,7 +78,7 @@ public:
 
     void set(dcel::Vertex &v, T val) {
         int idx = getNodeIndex(v);
-        if (idx == -1) {
+        if (idx == -1 || !_isInRange(idx)) {
             throw std::range_error("Vertex is not in NodeMap.");
         }
         _nodes[idx] = val;
@@ -119,14 +141,14 @@ public:
     bool isInterior(dcel::Vertex &v) {
         return _vertexMap->isInterior(v);
     }
-
+    
 private:
     void _initializeNodes() {
-        _nodes = std::vector<T>(size());
+        _nodes = std::vector<T>(size(), T());
     }
 
     bool _isInRange(int idx) {
-        return idx >= 0 || idx < (int)_nodes.size();
+        return idx >= 0 && idx < (int)_nodes.size();
     }
 
     VertexMap *_vertexMap;
