@@ -68,6 +68,7 @@ private:
     dcel::DCEL _voronoi;
     VertexMap _vertexMap;
     NodeMap<double> _heightMap;
+    NodeMap<double> _fluxMap;
     bool _isInitialized = false;
 
     double _samplePadFactor = 2.5;

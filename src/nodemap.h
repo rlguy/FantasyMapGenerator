@@ -141,6 +141,83 @@ public:
     bool isInterior(dcel::Vertex &v) {
         return _vertexMap->isInterior(v);
     }
+
+    // Normalize height map values to range [0, 1]
+    void normalize() {
+        double min = std::numeric_limits<double>::infinity();
+        double max = -std::numeric_limits<double>::infinity();
+        for (unsigned int i = 0; i < size(); i++) {
+            min = fmin(min, (*this)(i));
+            max = fmax(max, (*this)(i));
+        }
+
+        for (unsigned int i = 0; i < size(); i++) {
+            double val = (*this)(i);
+            double normalized = (val - min) / (max - min);
+            set(i, normalized);
+        }
+    }
+
+    // Normalize height map and square root the values
+    void round() {
+        normalize();
+        for (unsigned int i = 0; i < size(); i++) {
+            double rounded = sqrt((*this)(i));
+            set(i, rounded);
+        }
+    }
+
+    //  Replace height with average of its neighbours
+    void relax() {
+        std::vector<double> averages;
+        averages.reserve(size());
+
+        std::vector<double> nbs;
+        for (unsigned int i = 0; i < size(); i++) {
+            nbs.clear();
+            getNeighbours(i, nbs);
+            if (nbs.size() == 0) {
+                continue;
+            }
+
+            double sum = 0.0;
+            for (unsigned int nidx = 0; nidx < nbs.size(); nidx++) {
+                sum += nbs[nidx];
+            }
+            averages.push_back(sum / nbs.size());
+        }
+
+        for (unsigned int i = 0; i < size(); i++) {
+            set(i, averages[i]);
+        }
+    }
+
+    // Translate height map so that level is at zero
+    void setLevel(double level) {
+        for (unsigned int i = 0; i < size(); i++) {
+            double newval = (*this)(i) - level;
+            set(i, newval);
+        }
+    }
+
+    void setLevelToMedian() {
+        std::vector<double> values;
+        values.reserve(size());
+        for (unsigned int i = 0; i < size(); i++) {
+            values.push_back((*this)(i));
+        }
+
+        std::sort(values.begin(), values.end());
+        int mididx = values.size() / 2;
+        double median;
+        if (values.size() % 2 == 0) {
+            median = 0.5 * (values[mididx - 1] + values[mididx]);
+        } else {
+            median = values[mididx];
+        }
+
+        setLevel(median);
+    }
     
 private:
     void _initializeNodes() {

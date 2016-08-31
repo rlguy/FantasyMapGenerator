@@ -60,105 +60,35 @@ void gen::MapGenerator::normalize() {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
-    
-    /* 
-        Normalize height map values to range [0, 1]
-    */
-    double min = std::numeric_limits<double>::infinity();
-    double max = -std::numeric_limits<double>::infinity();
-    for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        min = fmin(min, _heightMap(i));
-        max = fmax(max, _heightMap(i));
-    }
-
-    for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        double val = _heightMap(i);
-        double normalized = (val - min) / (max - min);
-        _heightMap.set(i, normalized);
-    }
+    _heightMap.normalize();
 }
 
 void gen::MapGenerator::round() {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
-
-    /* 
-        Normalize height map and square root the values
-    */
-    normalize();
-    for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        double rounded = sqrt(_heightMap(i));
-        _heightMap.set(i, rounded);
-    }
+    _heightMap.round();
 }
 
 void gen::MapGenerator::relax() {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
-
-    /* 
-        Replace height with average of its neighbours
-    */
-    std::vector<double> averages;
-    averages.reserve(_heightMap.size());
-
-    std::vector<double> nbs;
-    for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        nbs.clear();
-        _heightMap.getNeighbours(i, nbs);
-        if (nbs.size() == 0) {
-            continue;
-        }
-
-        double sum = 0.0;
-        for (unsigned int nidx = 0; nidx < nbs.size(); nidx++) {
-            sum += nbs[nidx];
-        }
-        averages.push_back(sum / nbs.size());
-    }
-
-    for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        _heightMap.set(i, averages[i]);
-    }
+    _heightMap.relax();
 }
 
 void gen::MapGenerator::setSeaLevel(double level) {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
-
-    /* 
-        Translate height map so that level is at 0.5
-    */
-    for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        double newval = _heightMap(i) - (level - 0.5);
-        _heightMap.set(i, newval);
-    }
+    _heightMap.setLevel(level);
 }
 
 void gen::MapGenerator::setSeaLevelToMedian() {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
-
-    std::vector<double> values;
-    values.reserve(_heightMap.size());
-    for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        values.push_back(_heightMap(i));
-    }
-
-    std::sort(values.begin(), values.end());
-    int mididx = values.size() / 2;
-    double median;
-    if (values.size() % 2 == 0) {
-        median = 0.5 * (values[mididx - 1] + values[mididx]);
-    } else {
-        median = values[mididx];
-    }
-
-    setSeaLevel(median);
+    _heightMap.setLevelToMedian();
 }
 
 void gen::MapGenerator::addHill(double px, double py, double r, double height) {
@@ -268,7 +198,9 @@ void gen::MapGenerator::erode(double amount) {
     _calculateErosionMap(erosionMap);
 
     for (unsigned int i = 0; i < _heightMap.size(); i++) {
-        _heightMap.set(i, _heightMap(i) - amount * erosionMap(i));
+        double currlevel = _heightMap(i);
+        double newlevel = currlevel - amount * erosionMap(i);
+        _heightMap.set(i, newlevel);
     }
 }
 
@@ -341,6 +273,16 @@ void gen::MapGenerator::outputHeightMap(std::string filename) {
     }
 
     std::vector<double> facecolors = _computeFaceHeights(_heightMap);
+    double min = facecolors[0];
+    double max = facecolors[0];
+    for (unsigned int i = 0; i < facecolors.size(); i++) {
+        min = fmin(min, facecolors[i]);
+        max = fmax(max, facecolors[i]);
+    }
+
+    for (unsigned int i = 0; i < facecolors.size(); i++) {
+        facecolors[i] = (facecolors[i] - min) / (max - min);
+    }
 
     jsoncons::json output;
     output["colors"] = facecolors;
@@ -485,10 +427,7 @@ void gen::MapGenerator::_calculateErosionMap(NodeMap<double> &erosionMap) {
         erosionMap.set(i, erosion);
     }
 
-    double max = erosionMap.max();
-    for (unsigned int i = 0; i < erosionMap.size(); i++) {
-        erosionMap.set(i, erosionMap(i) / max);
-    }
+    erosionMap.normalize();
 }
 
 void gen::MapGenerator::_fillDepressions() {
@@ -578,6 +517,8 @@ void gen::MapGenerator::_calculateFluxMap(NodeMap<double> &fluxMap) {
         f /= maxFlux;
         fluxMap.set(i, f);
     }
+
+    _fluxMap = fluxMap;
 }
 
 double gen::MapGenerator::_calculateFluxCap(NodeMap<double> &fluxMap) {
