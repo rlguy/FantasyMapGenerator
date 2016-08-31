@@ -43,6 +43,7 @@ public:
     void outputInteriorVertices(std::string filename);
     void outputHeightMap(std::string filename);
     void outputContour(std::string filename, double isolevel);
+    void outputRivers(std::string filename, double isolevel);
 
 private:
     jsoncons::json _getExtentsJSON();
@@ -50,6 +51,7 @@ private:
                          std::string filename);
     std::vector<double> _computeFaceHeights(NodeMap<double> &heightMap);
     std::vector<double> _computeContour(double isolevel);
+    std::vector<dcel::Vertex> _getContourVertices(double isolevel);
     bool _isEdgeInMap(dcel::HalfEdge &h);
     bool _isContourEdge(dcel::HalfEdge &h, 
                         std::vector<double> &faceheights, 
@@ -61,6 +63,8 @@ private:
     double _calculateFluxCap(NodeMap<double> &fluxMap);
     void _calculateSlopeMap(NodeMap<double> &slopeMap);
     double _calculateSlope(int i);
+    std::vector<double> _computeRiverContour(double isolevel);
+    std::vector<dcel::Vertex> _computeRiverVertices(double isolevel);
 
     Extents2d _extents;
     double _resolution;
@@ -69,14 +73,16 @@ private:
     VertexMap _vertexMap;
     NodeMap<double> _heightMap;
     NodeMap<double> _fluxMap;
+    NodeMap<int> _flowMap;
     bool _isInitialized = false;
 
     double _samplePadFactor = 2.5;
     double _fluxCapPercentile = 0.995;
     double _maxErosionRate = 50.0;
     double _erosionRiverFactor = 500.0;
-    double _erosionCreepFactor = 100.0;
+    double _erosionCreepFactor = 500.0;
     double _defaultErodeAmount = 0.1;
+    double _riverFluxThreshold = 0.05;
 
 };
 

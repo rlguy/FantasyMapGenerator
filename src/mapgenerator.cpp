@@ -302,6 +302,18 @@ void gen::MapGenerator::outputContour(std::string filename, double isolevel) {
     file.close();
 }
 
+void gen::MapGenerator::outputRivers(std::string filename, double isolevel) {
+    std::vector<double> contour =  _computeRiverContour(isolevel);
+
+    jsoncons::json output;
+    output["contour"] = contour;
+    output["extents"] = _getExtentsJSON();
+
+    std::ofstream file(filename);
+    file << output;
+    file.close();
+}
+
 jsoncons::json gen::MapGenerator::_getExtentsJSON() {
     jsoncons::json extents;
     extents["minx"] = _extents.minx;
@@ -387,6 +399,45 @@ std::vector<double> gen::MapGenerator::_computeContour(double isolevel) {
     }
 
     return contour;
+}
+
+std::vector<dcel::Vertex> gen::MapGenerator::_getContourVertices(double isolevel) {
+    std::vector<dcel::Vertex> vertices;
+    std::vector<double> faceheights = _computeFaceHeights(_heightMap);
+    std::vector<bool> isEdgeInContour(_voronoi.edges.size(), false);
+    std::vector<bool> isVertexInContour(_vertexMap.vertices.size(), false);
+
+    dcel::HalfEdge h;
+    dcel::Vertex v1, v2;
+    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
+        h = _voronoi.edges[i];
+        if (!_isEdgeInMap(h) || isEdgeInContour[h.id.ref]) {
+            continue;
+        }
+
+        if (!_isContourEdge(h, faceheights, isolevel)) {
+            continue;
+        }
+
+        v1 = _voronoi.origin(h);
+        v2 = _voronoi.origin(_voronoi.twin(h));
+        int idx1 = _vertexMap.getVertexIndex(v1);
+        int idx2 = _vertexMap.getVertexIndex(v2);
+        
+        if (!isVertexInContour[idx1]) {
+            vertices.push_back(v1);
+            isVertexInContour[idx1] = true;
+        }
+        if (!isVertexInContour[idx2]) {
+            vertices.push_back(v2);
+            isVertexInContour[idx2] = true;
+        }
+
+        isEdgeInContour[h.id.ref] = true;
+        isEdgeInContour[h.twin.ref] = true;
+    }
+
+    return vertices;
 }
 
 bool gen::MapGenerator::_isEdgeInMap(dcel::HalfEdge &h) {
@@ -510,6 +561,9 @@ void gen::MapGenerator::_calculateFluxMap(NodeMap<double> &fluxMap) {
         }
     }
 
+    _fluxMap.relax();
+    //_fluxMap.relax();
+
     double maxFlux = _calculateFluxCap(fluxMap);
     for (unsigned int i = 0; i < fluxMap.size(); i++) {
         double f = fluxMap(i);
@@ -519,6 +573,7 @@ void gen::MapGenerator::_calculateFluxMap(NodeMap<double> &fluxMap) {
     }
 
     _fluxMap = fluxMap;
+    _flowMap = flowMap;
 }
 
 double gen::MapGenerator::_calculateFluxCap(NodeMap<double> &fluxMap) {
@@ -592,4 +647,94 @@ double gen::MapGenerator::_calculateSlope(int i) {
     double slope = sqrt(nx*nx + ny*ny);
 
     return slope;
+}
+
+std::vector<double> gen::MapGenerator::_computeRiverContour(double isolevel) {
+    std::vector<dcel::Vertex> riverVertices = _computeRiverVertices(isolevel);
+
+    std::vector<bool> isVertexInRiver(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < riverVertices.size(); i++) {
+        int idx = _vertexMap.getVertexIndex(riverVertices[i]);
+        isVertexInRiver[idx] = true;
+    }
+
+    std::vector<double> contour;
+    std::vector<bool> isEdgeInContour(_voronoi.edges.size(), false);
+
+    dcel::HalfEdge h;
+    dcel::Vertex p1, p2;
+    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
+        h = _voronoi.edges[i];
+        if (!_isEdgeInMap(h) || isEdgeInContour[h.id.ref]) {
+            continue;
+        }
+
+        p1 = _voronoi.origin(h);
+        p2 = _voronoi.origin(_voronoi.twin(h));
+        int idx1 = _vertexMap.getVertexIndex(p1);
+        int idx2 = _vertexMap.getVertexIndex(p2);
+
+        if (!isVertexInRiver[idx1] || !isVertexInRiver[idx2]) {
+            continue;
+        }
+
+        contour.push_back(p1.position.x);
+        contour.push_back(p1.position.y);
+        contour.push_back(p2.position.x);
+        contour.push_back(p2.position.y);
+
+        isEdgeInContour[h.id.ref] = true;
+        isEdgeInContour[h.twin.ref] = true;
+    }
+
+    return contour;
+}
+
+std::vector<dcel::Vertex> gen::MapGenerator::_computeRiverVertices(double isolevel) {
+    std::vector<dcel::Vertex> vertices;
+    std::vector<bool> isVertexAdded(_vertexMap.vertices.size(), false);
+
+    std::vector<dcel::Vertex> contourVertices = _getContourVertices(isolevel);
+    std::vector<bool> isContourVertex(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < contourVertices.size(); i++) {
+        int idx = _vertexMap.getVertexIndex(contourVertices[i]);
+        isContourVertex[idx] = true;
+    }
+
+    dcel::Vertex v;
+    std::vector<dcel::Vertex> pathVertices;
+    for (unsigned int i = 0; i < _vertexMap.vertices.size(); i++) {
+        v = _vertexMap.vertices[i];
+        if (_fluxMap(v) < _riverFluxThreshold || _heightMap(v) < isolevel) {
+            continue;
+        }
+
+        int next = _flowMap.getNodeIndex(v);
+        pathVertices.clear();
+        while (next != -1) {
+            pathVertices.push_back(_vertexMap.vertices[next]);
+            if (isContourVertex[next]) { break; }
+            next = _flowMap(next);
+        }
+
+        if (pathVertices.empty()) { continue; }
+
+        double heightsum = 0.0;
+        for (unsigned int i = 0; i < pathVertices.size(); i++) {
+            heightsum += _heightMap(pathVertices[i]);
+        }
+
+        double avg = heightsum / (double)pathVertices.size();
+        if (avg < isolevel) { continue; }
+
+        for (unsigned int i = 0; i < pathVertices.size(); i++) {
+            int idx = _vertexMap.getVertexIndex(pathVertices[i]);
+            if (!isVertexAdded[idx]) {
+                vertices.push_back(pathVertices[i]);
+                isVertexAdded[idx] = true;
+            }
+        }
+    }
+
+    return vertices;
 }
