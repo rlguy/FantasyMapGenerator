@@ -324,7 +324,7 @@ jsoncons::json gen::MapGenerator::_getExtentsJSON() {
     return extents;
 }
 
-void gen::MapGenerator::_outputVertices(std::vector<dcel::Vertex> &verts, 
+void gen::MapGenerator::_outputVertices(VertexList &verts, 
                                         std::string filename) {
     std::vector<double> coordinates;
     coordinates.reserve(2*_vertexMap.edge.size());
@@ -401,8 +401,8 @@ std::vector<double> gen::MapGenerator::_computeContour(double isolevel) {
     return contour;
 }
 
-std::vector<dcel::Vertex> gen::MapGenerator::_getContourVertices(double isolevel) {
-    std::vector<dcel::Vertex> vertices;
+gen::MapGenerator::VertexList gen::MapGenerator::_getContourVertices(double isolevel) {
+    VertexList vertices;
     std::vector<double> faceheights = _computeFaceHeights(_heightMap);
     std::vector<bool> isEdgeInContour(_voronoi.edges.size(), false);
     std::vector<bool> isVertexInContour(_vertexMap.vertices.size(), false);
@@ -525,7 +525,7 @@ void gen::MapGenerator::_fillDepressions() {
 
 void gen::MapGenerator::_calculateFlowMap(NodeMap<int> &flowMap) {
     dcel::Vertex v, n;
-    std::vector<dcel::Vertex> nbs;
+    VertexList nbs;
     for (unsigned int i = 0; i < _vertexMap.interior.size(); i++) {
         v = _vertexMap.interior[i];
 
@@ -560,9 +560,6 @@ void gen::MapGenerator::_calculateFluxMap(NodeMap<double> &fluxMap) {
             next = flowMap(next);
         }
     }
-
-    _fluxMap.relax();
-    //_fluxMap.relax();
 
     double maxFlux = _calculateFluxCap(fluxMap);
     for (unsigned int i = 0; i < fluxMap.size(); i++) {
@@ -619,7 +616,7 @@ double gen::MapGenerator::_calculateSlope(int i) {
         return 0.0;
     }
 
-    std::vector<dcel::Vertex> nbs;
+    VertexList nbs;
     nbs.reserve(3);
     _vertexMap.getNeighbours(v, nbs);
     if (nbs.size() != 3) {
@@ -650,51 +647,31 @@ double gen::MapGenerator::_calculateSlope(int i) {
 }
 
 std::vector<double> gen::MapGenerator::_computeRiverContour(double isolevel) {
-    std::vector<dcel::Vertex> riverVertices = _computeRiverVertices(isolevel);
-
-    std::vector<bool> isVertexInRiver(_vertexMap.vertices.size(), false);
-    for (unsigned int i = 0; i < riverVertices.size(); i++) {
-        int idx = _vertexMap.getVertexIndex(riverVertices[i]);
-        isVertexInRiver[idx] = true;
+    std::vector<VertexList> riverPaths = _getRiverPaths(isolevel);
+    for (unsigned int i = 0; i < riverPaths.size(); i++) {
+        riverPaths[i] = _smoothPath(riverPaths[i], _riverSmoothingFactor);
     }
 
     std::vector<double> contour;
-    std::vector<bool> isEdgeInContour(_voronoi.edges.size(), false);
-
-    dcel::HalfEdge h;
-    dcel::Vertex p1, p2;
-    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
-        h = _voronoi.edges[i];
-        if (!_isEdgeInMap(h) || isEdgeInContour[h.id.ref]) {
-            continue;
+    for (unsigned int i = 0; i < riverPaths.size(); i++) {
+        for (unsigned int j = 0; j < riverPaths[i].size() - 1; j++) {
+            dcel::Point v1 = riverPaths[i][j].position;
+            dcel::Point v2 = riverPaths[i][j+1].position;
+            contour.push_back(v1.x);
+            contour.push_back(v1.y);
+            contour.push_back(v2.x);
+            contour.push_back(v2.y);
         }
-
-        p1 = _voronoi.origin(h);
-        p2 = _voronoi.origin(_voronoi.twin(h));
-        int idx1 = _vertexMap.getVertexIndex(p1);
-        int idx2 = _vertexMap.getVertexIndex(p2);
-
-        if (!isVertexInRiver[idx1] || !isVertexInRiver[idx2]) {
-            continue;
-        }
-
-        contour.push_back(p1.position.x);
-        contour.push_back(p1.position.y);
-        contour.push_back(p2.position.x);
-        contour.push_back(p2.position.y);
-
-        isEdgeInContour[h.id.ref] = true;
-        isEdgeInContour[h.twin.ref] = true;
     }
 
     return contour;
 }
 
-std::vector<dcel::Vertex> gen::MapGenerator::_computeRiverVertices(double isolevel) {
-    std::vector<dcel::Vertex> vertices;
+gen::MapGenerator::VertexList gen::MapGenerator::_getRiverVertices(double isolevel) {
+    VertexList vertices;
     std::vector<bool> isVertexAdded(_vertexMap.vertices.size(), false);
 
-    std::vector<dcel::Vertex> contourVertices = _getContourVertices(isolevel);
+    VertexList contourVertices = _getContourVertices(isolevel);
     std::vector<bool> isContourVertex(_vertexMap.vertices.size(), false);
     for (unsigned int i = 0; i < contourVertices.size(); i++) {
         int idx = _vertexMap.getVertexIndex(contourVertices[i]);
@@ -702,7 +679,7 @@ std::vector<dcel::Vertex> gen::MapGenerator::_computeRiverVertices(double isolev
     }
 
     dcel::Vertex v;
-    std::vector<dcel::Vertex> pathVertices;
+    VertexList pathVertices;
     for (unsigned int i = 0; i < _vertexMap.vertices.size(); i++) {
         v = _vertexMap.vertices[i];
         if (_fluxMap(v) < _riverFluxThreshold || _heightMap(v) < isolevel) {
@@ -737,4 +714,113 @@ std::vector<dcel::Vertex> gen::MapGenerator::_computeRiverVertices(double isolev
     }
 
     return vertices;
+}
+
+gen::MapGenerator::VertexList gen::MapGenerator::_getFixedRiverVertices(VertexList &riverVertices) {
+    std::vector<bool> isVertexInRiver(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < riverVertices.size(); i++) {
+        int idx = _vertexMap.getVertexIndex(riverVertices[i]);
+        isVertexInRiver[idx] = true;
+    }
+
+    std::vector<bool> isEdgeProcessed(_voronoi.edges.size(), false);
+    std::vector<int> adjacentEdgeCount(_vertexMap.vertices.size(), 0);
+
+    dcel::HalfEdge h;
+    dcel::Vertex p1, p2;
+    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
+        h = _voronoi.edges[i];
+        if (!_isEdgeInMap(h) || isEdgeProcessed[h.id.ref]) { 
+            continue; 
+        }
+
+        p1 = _voronoi.origin(h);
+        p2 = _voronoi.origin(_voronoi.twin(h));
+        int idx1 = _vertexMap.getVertexIndex(p1);
+        int idx2 = _vertexMap.getVertexIndex(p2);
+
+        if (!isVertexInRiver[idx1] || !isVertexInRiver[idx2]) {
+            continue;
+        }
+
+        adjacentEdgeCount[idx1]++;
+        adjacentEdgeCount[idx2]++;
+
+        isEdgeProcessed[h.id.ref] = true;
+        isEdgeProcessed[h.twin.ref] = true;
+    }
+
+    VertexList fixedVertices;
+    for (unsigned int i = 0; i < adjacentEdgeCount.size(); i++) {
+        if (adjacentEdgeCount[i] == 1 || adjacentEdgeCount[i] == 3) {
+            fixedVertices.push_back(_vertexMap.vertices[i]);
+        }
+    }
+
+    return fixedVertices;
+}
+
+std::vector<gen::MapGenerator::VertexList> 
+gen::MapGenerator::_getRiverPaths(double isolevel) {
+    VertexList riverVertices = _getRiverVertices(isolevel);
+    std::vector<bool> isVertexInRiver(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < riverVertices.size(); i++) {
+        int idx = _vertexMap.getVertexIndex(riverVertices[i]);
+        isVertexInRiver[idx] = true;
+    }
+
+    VertexList fixedVertices = _getFixedRiverVertices(riverVertices);
+    std::vector<bool> isFixedVertex(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < fixedVertices.size(); i++) {
+        int vidx = _vertexMap.getVertexIndex(fixedVertices[i]);
+        isFixedVertex[vidx] = true;
+    }
+
+    std::vector<VertexList> riverPaths;
+    VertexList path;
+    for (unsigned int i = 0; i < isFixedVertex.size(); i++) {
+        if (!isFixedVertex[i]) {
+            continue;
+        }
+
+        path.clear();
+        int next = i;
+        while (isVertexInRiver[next]) {
+            path.push_back(_vertexMap.vertices[next]);
+            next = _flowMap(next);
+
+            if (next == -1) { break; }
+            if (isFixedVertex[next]) {
+                path.push_back(_vertexMap.vertices[next]);
+                break;
+            }
+        }
+
+        if (path.size() >= 2) {
+            riverPaths.push_back(path);
+        }
+    }
+
+    return riverPaths;
+}
+
+gen::MapGenerator::VertexList gen::MapGenerator::_smoothPath(VertexList &path,
+                                                             double factor) {
+    if (path.size() < 2) {
+        return path;
+    }
+
+    VertexList smoothedPath = path;
+    for (unsigned int i = 1; i < path.size() - 1; i++) {
+        dcel::Point v0 = path[i-1].position;
+        dcel::Point v1 = path[i].position;
+        dcel::Point v2 = path[i+1].position;
+
+        v1.x = factor*v1.x + (1-factor)*0.5*(v0.x + v2.x);
+        v1.y = factor*v1.y + (1-factor)*0.5*(v0.y + v2.y);
+
+        smoothedPath[i].position = v1;
+    }
+
+    return smoothedPath;
 }

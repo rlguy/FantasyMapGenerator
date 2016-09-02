@@ -46,12 +46,14 @@ public:
     void outputRivers(std::string filename, double isolevel);
 
 private:
+    typedef std::vector<dcel::Vertex> VertexList;
+
     jsoncons::json _getExtentsJSON();
     void _outputVertices(std::vector<dcel::Vertex> &verts, 
                          std::string filename);
     std::vector<double> _computeFaceHeights(NodeMap<double> &heightMap);
     std::vector<double> _computeContour(double isolevel);
-    std::vector<dcel::Vertex> _getContourVertices(double isolevel);
+    VertexList _getContourVertices(double isolevel);
     bool _isEdgeInMap(dcel::HalfEdge &h);
     bool _isContourEdge(dcel::HalfEdge &h, 
                         std::vector<double> &faceheights, 
@@ -64,7 +66,11 @@ private:
     void _calculateSlopeMap(NodeMap<double> &slopeMap);
     double _calculateSlope(int i);
     std::vector<double> _computeRiverContour(double isolevel);
-    std::vector<dcel::Vertex> _computeRiverVertices(double isolevel);
+    VertexList _getRiverVertices(double isolevel);
+    VertexList _getFixedRiverVertices(VertexList &riverVertices);
+    std::vector<VertexList> _getRiverPaths(double isolevel);
+    VertexList _smoothPath(VertexList &path,
+                           double factor);
 
     Extents2d _extents;
     double _resolution;
@@ -83,6 +89,7 @@ private:
     double _erosionCreepFactor = 500.0;
     double _defaultErodeAmount = 0.1;
     double _riverFluxThreshold = 0.05;
+    double _riverSmoothingFactor = 0.5;
 
 };
 
