@@ -292,22 +292,25 @@ void gen::MapGenerator::outputHeightMap(std::string filename) {
     file.close();
 }
 
-void gen::MapGenerator::outputContour(std::string filename, double isolevel) {
+void gen::MapGenerator::outputDrawData(std::string filename) {
+    if (!_isInitialized) {
+        throw std::runtime_error("MapGenerator must be initialized.");
+    }
+
+    std::vector<std::vector<double> > contourData;
+    _getContourDrawData(contourData);
+
+    std::vector<std::vector<double> > riverData;
+    _getRiverDrawData(riverData);
+
+    double width = _extents.maxx - _extents.minx;
+    double height = _extents.maxy - _extents.miny;
+    double aspectratio = width / height;
+
     jsoncons::json output;
-    output["contour"] = _computeContour(isolevel);
-    output["extents"] = _getExtentsJSON();
-
-    std::ofstream file(filename);
-    file << output;
-    file.close();
-}
-
-void gen::MapGenerator::outputRivers(std::string filename, double isolevel) {
-    std::vector<double> contour =  _computeRiverContour(isolevel);
-
-    jsoncons::json output;
-    output["contour"] = contour;
-    output["extents"] = _getExtentsJSON();
+    output["aspect_ratio"] = aspectratio;
+    output["contour"] = contourData;
+    output["river"] = riverData;
 
     std::ofstream file(filename);
     file << output;
@@ -367,77 +370,6 @@ std::vector<double> gen::MapGenerator::_computeFaceHeights(NodeMap<double> &heig
     }
 
     return faceheights;
-}
-
-std::vector<double> gen::MapGenerator::_computeContour(double isolevel) {
-    std::vector<double> contour;
-    std::vector<double> faceheights = _computeFaceHeights(_heightMap);
-    std::vector<bool> isEdgeInContour(_voronoi.edges.size(), false);
-
-    dcel::HalfEdge h;
-    dcel::Point p1, p2;
-    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
-        h = _voronoi.edges[i];
-        if (!_isEdgeInMap(h) || isEdgeInContour[h.id.ref]) {
-            continue;
-        }
-
-        if (!_isContourEdge(h, faceheights, isolevel)) {
-            continue;
-        }
-
-        p1 = _voronoi.origin(h).position;
-        p2 = _voronoi.origin(_voronoi.twin(h)).position;
-
-        contour.push_back(p1.x);
-        contour.push_back(p1.y);
-        contour.push_back(p2.x);
-        contour.push_back(p2.y);
-
-        isEdgeInContour[h.id.ref] = true;
-        isEdgeInContour[h.twin.ref] = true;
-    }
-
-    return contour;
-}
-
-gen::MapGenerator::VertexList gen::MapGenerator::_getContourVertices(double isolevel) {
-    VertexList vertices;
-    std::vector<double> faceheights = _computeFaceHeights(_heightMap);
-    std::vector<bool> isEdgeInContour(_voronoi.edges.size(), false);
-    std::vector<bool> isVertexInContour(_vertexMap.vertices.size(), false);
-
-    dcel::HalfEdge h;
-    dcel::Vertex v1, v2;
-    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
-        h = _voronoi.edges[i];
-        if (!_isEdgeInMap(h) || isEdgeInContour[h.id.ref]) {
-            continue;
-        }
-
-        if (!_isContourEdge(h, faceheights, isolevel)) {
-            continue;
-        }
-
-        v1 = _voronoi.origin(h);
-        v2 = _voronoi.origin(_voronoi.twin(h));
-        int idx1 = _vertexMap.getVertexIndex(v1);
-        int idx2 = _vertexMap.getVertexIndex(v2);
-        
-        if (!isVertexInContour[idx1]) {
-            vertices.push_back(v1);
-            isVertexInContour[idx1] = true;
-        }
-        if (!isVertexInContour[idx2]) {
-            vertices.push_back(v2);
-            isVertexInContour[idx2] = true;
-        }
-
-        isEdgeInContour[h.id.ref] = true;
-        isEdgeInContour[h.twin.ref] = true;
-    }
-
-    return vertices;
 }
 
 bool gen::MapGenerator::_isEdgeInMap(dcel::HalfEdge &h) {
@@ -646,137 +578,299 @@ double gen::MapGenerator::_calculateSlope(int i) {
     return slope;
 }
 
-std::vector<double> gen::MapGenerator::_computeRiverContour(double isolevel) {
-    std::vector<VertexList> riverPaths = _getRiverPaths(isolevel);
+void gen::MapGenerator::_getContourDrawData(std::vector<std::vector<double> > &data) {
+    std::vector<VertexList> paths;
+    _getContourPaths(paths);
+
+    double invwidth = 1.0 / (_extents.maxx - _extents.minx);
+    double invheight = 1.0 / (_extents.maxy - _extents.miny);
+    for (unsigned int j = 0; j < paths.size(); j++) {
+        std::vector<double> drawPath;
+        drawPath.reserve(2*paths[j].size());
+        for (unsigned int i = 0; i < paths[j].size(); i++) {
+            dcel::Vertex v = paths[j][i];
+            double nx = (v.position.x - _extents.minx) * invwidth;
+            double ny = (v.position.y - _extents.miny) * invheight;
+            drawPath.push_back(nx);
+            drawPath.push_back(ny);
+        }
+        data.push_back(drawPath);
+    }
+}
+
+void gen::MapGenerator::_getContourPaths(std::vector<VertexList> &paths) {
+    std::vector<bool> isLandFace;
+    _getLandFaces(isLandFace);
+
+    std::vector<int> adjacentEdgeCounts(_vertexMap.vertices.size(), 0);
+    std::vector<bool> isEdgeVisited(_voronoi.edges.size(), false);
+    dcel::HalfEdge h;
+    dcel::Vertex v1, v2;
+    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
+        h = _voronoi.edges[i];
+        if (!_isEdgeInMap(h) || isEdgeVisited[h.id.ref]) { 
+            continue; 
+        }
+
+        if (!_isContourEdge(h, isLandFace)) { 
+            continue; 
+        }
+
+        v1 = _voronoi.origin(h);
+        v2 = _voronoi.origin(_voronoi.twin(h));
+        int idx1 = _vertexMap.getVertexIndex(v1);
+        int idx2 = _vertexMap.getVertexIndex(v2);
+        adjacentEdgeCounts[idx1]++;
+        adjacentEdgeCounts[idx2]++;
+
+        isEdgeVisited[h.id.ref] = true;
+        isEdgeVisited[h.twin.ref] = true;
+    }
+
+    std::vector<bool> isEndVertex(_vertexMap.vertices.size(), false);
+    std::vector<bool> isContourVertex(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < adjacentEdgeCounts.size(); i++) {
+        if (adjacentEdgeCounts[i] == 1) {
+            isEndVertex[i] = true;
+            isContourVertex[i] = true;
+        } else if (adjacentEdgeCounts[i] == 2) {
+            isContourVertex[i] = true;
+        }
+    }
+
+    std::vector<bool> isVertexInContour(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < isEndVertex.size(); i++) {
+        if (!isEndVertex[i] || isVertexInContour[i]) {
+            continue;
+        }
+
+        VertexList path;
+        _getContourPath(i, isContourVertex, isEndVertex, isLandFace,
+                           isVertexInContour, path);
+        paths.push_back(path);
+    }
+
+    for (unsigned int i = 0; i < isContourVertex.size(); i++) {
+        if (!isContourVertex[i] || isVertexInContour[i]) {
+            continue;
+        }
+
+        VertexList path;
+        _getContourPath(i, isContourVertex, isEndVertex, isLandFace,
+                           isVertexInContour, path);
+        paths.push_back(path);
+    }
+}
+
+void gen::MapGenerator::_getLandFaces(std::vector<bool> &isLandFace) {
+    std::vector<double> faceHeights;
+    _getFaceHeights(faceHeights);
+
+    isLandFace.clear();
+    isLandFace.reserve(_voronoi.faces.size());
+    for (unsigned int i = 0; i < faceHeights.size(); i++) {
+        isLandFace.push_back(_isLand(faceHeights[i]));
+    }
+
+    _cleanupLandFaces(isLandFace);    
+}
+
+void gen::MapGenerator::_getFaceHeights(std::vector<double> &faceHeights) {
+    faceHeights.clear();
+    faceHeights.reserve(_voronoi.faces.size());
+
+    dcel::Face f;
+    dcel::Vertex v;
+    std::vector<dcel::HalfEdge> edges;
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        f = _voronoi.faces[i];
+
+        edges.clear();
+        _voronoi.getOuterComponents(f, edges);
+
+        double sum = 0.0;
+        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
+            v = _voronoi.origin(edges[eidx]);
+            if (_heightMap.isNode(v)) {
+                sum += _heightMap(v);
+            }
+        }
+        double avg = sum / edges.size();
+        faceHeights.push_back(avg);
+    }
+}
+
+bool gen::MapGenerator::_isLand(double isolevel) {
+    return isolevel >= _isolevel;
+}
+
+void gen::MapGenerator::_cleanupLandFaces(std::vector<bool> &isLandFace) {
+    std::vector<std::vector<int> > islands;
+    std::vector<bool> isFaceProcessed(_voronoi.faces.size(), false);
+    std::vector<int> connectedFaces;
+    for (unsigned int i = 0; i < isLandFace.size(); i++) {
+        if (isFaceProcessed[i]) {
+            continue;
+        }
+
+        connectedFaces.clear();
+        _getConnectedFaces(i, isLandFace, isFaceProcessed, connectedFaces);
+        islands.push_back(connectedFaces);
+    }
+
+    for (unsigned int j = 0; j < islands.size(); j++) {
+        if (islands[j].size() >= _minIslandFaceThreshold) {
+            continue;
+        }
+
+        for (unsigned int i = 0; i < islands[j].size(); i++) {
+            int fidx = islands[j][i];
+            isLandFace[fidx] = !isLandFace[fidx];
+        }
+    }
+}
+
+void gen::MapGenerator::_getConnectedFaces(int seed, 
+                                           std::vector<bool> &isLandFace,
+                                           std::vector<bool> &isFaceProcessed,
+                                           std::vector<int> &faces) {
+    std::vector<int> queue;
+    queue.push_back(seed);
+    isFaceProcessed[seed] = true;
+
+    dcel::HalfEdge h;
+    std::vector<dcel::HalfEdge> outerComponents;
+    while (!queue.empty()) {
+        int fidx = queue.back();
+        queue.pop_back();
+
+        bool faceType = isLandFace[fidx];
+        outerComponents.clear();
+        _voronoi.getOuterComponents(_voronoi.faces[fidx], outerComponents);
+        for (unsigned int nidx = 0; nidx < outerComponents.size(); nidx++) {
+            h = _voronoi.twin(outerComponents[nidx]);
+            int nfidx = h.incidentFace.ref;
+            if ((nfidx != -1) && (isLandFace[nfidx] == faceType) && !isFaceProcessed[nfidx]) {
+                queue.push_back(nfidx);
+                isFaceProcessed[nfidx] = true;
+            }
+        }
+
+        faces.push_back(fidx);
+    }
+}
+
+
+bool gen::MapGenerator::_isContourEdge(dcel::HalfEdge &h, 
+                                       std::vector<bool> &isLandFace) {
+    dcel::Face f1 = _voronoi.incidentFace(h);
+    dcel::Face f2 = _voronoi.incidentFace(_voronoi.twin(h));
+    return (isLandFace[f1.id.ref] && !isLandFace[f2.id.ref]) ||
+           (isLandFace[f2.id.ref] && !isLandFace[f1.id.ref]);
+}
+
+bool gen::MapGenerator::_isContourEdge(dcel::Vertex &v1, dcel::Vertex &v2, 
+                                       std::vector<bool> &isLandFace) {
+    std::vector<dcel::HalfEdge> edges;
+    edges.reserve(3);
+    _voronoi.getIncidentEdges(v1, edges);
+
+    dcel::HalfEdge h;
+    dcel::Vertex v;
+    for (unsigned int i = 0; i < edges.size(); i++) {
+        h = edges[i];
+        v = _voronoi.origin(_voronoi.twin(h));
+        if (v.id.ref == v2.id.ref) {
+            return _isContourEdge(h, isLandFace);
+        }
+    }
+
+    return false;
+}
+
+void gen::MapGenerator::_getContourPath(int seed, std::vector<bool> &isContourVertex, 
+                                                  std::vector<bool> &isEndVertex, 
+                                                  std::vector<bool> &isLandFace,
+                                                  std::vector<bool> &isVertexInContour, 
+                                                  VertexList &path) {
+    dcel::Vertex v = _vertexMap.vertices[seed];
+    dcel::Vertex lastVertex = v;
+
+    std::vector<dcel::Vertex> nbs;
+    for (;;) {
+        path.push_back(v);
+        isVertexInContour[_vertexMap.getVertexIndex(v)] = true;
+        
+        nbs.clear();
+        _vertexMap.getNeighbours(v, nbs);
+        bool isFound = false;
+        for (unsigned int i = 0; i < nbs.size(); i++) {
+            dcel::Vertex n = nbs[i];
+            int nidx = _vertexMap.getVertexIndex(n);
+            if (n.id.ref != lastVertex.id.ref && isContourVertex[nidx] && 
+                    _isContourEdge(v, n, isLandFace)) {
+                lastVertex = v;
+                v = n;
+                isFound = true;
+                break;
+            }
+        }
+
+        if (!isFound) {
+            break;
+        }
+
+        int vidx = _vertexMap.getVertexIndex(v);
+        if (isEndVertex[vidx] || isVertexInContour[vidx]) {
+            path.push_back(v);
+            isVertexInContour[vidx] = true;
+            break;
+        }
+    }
+}
+
+void gen::MapGenerator::_getRiverDrawData(std::vector<std::vector<double> > &data) {
+    std::vector<VertexList> riverPaths;
+    _getRiverPaths(riverPaths);
+
     for (unsigned int i = 0; i < riverPaths.size(); i++) {
         riverPaths[i] = _smoothPath(riverPaths[i], _riverSmoothingFactor);
     }
 
-    std::vector<double> contour;
-    for (unsigned int i = 0; i < riverPaths.size(); i++) {
-        for (unsigned int j = 0; j < riverPaths[i].size() - 1; j++) {
-            dcel::Point v1 = riverPaths[i][j].position;
-            dcel::Point v2 = riverPaths[i][j+1].position;
-            contour.push_back(v1.x);
-            contour.push_back(v1.y);
-            contour.push_back(v2.x);
-            contour.push_back(v2.y);
+    double invwidth = 1.0 / (_extents.maxx - _extents.minx);
+    double invheight = 1.0 / (_extents.maxy - _extents.miny);
+    for (unsigned int j = 0; j < riverPaths.size(); j++) {
+        std::vector<double> drawPath;
+        drawPath.reserve(2*riverPaths[j].size());
+        for (unsigned int i = 0; i < riverPaths[j].size(); i++) {
+            dcel::Vertex v = riverPaths[j][i];
+            double nx = (v.position.x - _extents.minx) * invwidth;
+            double ny = (v.position.y - _extents.miny) * invheight;
+            drawPath.push_back(nx);
+            drawPath.push_back(ny);
         }
+        data.push_back(drawPath);
     }
-
-    return contour;
 }
 
-gen::MapGenerator::VertexList gen::MapGenerator::_getRiverVertices(double isolevel) {
-    VertexList vertices;
-    std::vector<bool> isVertexAdded(_vertexMap.vertices.size(), false);
+void gen::MapGenerator::_getRiverPaths(std::vector<VertexList> &riverPaths) {
+    VertexList riverVertices;
+    _getRiverVertices(riverVertices);
 
-    VertexList contourVertices = _getContourVertices(isolevel);
-    std::vector<bool> isContourVertex(_vertexMap.vertices.size(), false);
-    for (unsigned int i = 0; i < contourVertices.size(); i++) {
-        int idx = _vertexMap.getVertexIndex(contourVertices[i]);
-        isContourVertex[idx] = true;
-    }
-
-    dcel::Vertex v;
-    VertexList pathVertices;
-    for (unsigned int i = 0; i < _vertexMap.vertices.size(); i++) {
-        v = _vertexMap.vertices[i];
-        if (_fluxMap(v) < _riverFluxThreshold || _heightMap(v) < isolevel) {
-            continue;
-        }
-
-        int next = _flowMap.getNodeIndex(v);
-        pathVertices.clear();
-        while (next != -1) {
-            pathVertices.push_back(_vertexMap.vertices[next]);
-            if (isContourVertex[next]) { break; }
-            next = _flowMap(next);
-        }
-
-        if (pathVertices.empty()) { continue; }
-
-        double heightsum = 0.0;
-        for (unsigned int i = 0; i < pathVertices.size(); i++) {
-            heightsum += _heightMap(pathVertices[i]);
-        }
-
-        double avg = heightsum / (double)pathVertices.size();
-        if (avg < isolevel) { continue; }
-
-        for (unsigned int i = 0; i < pathVertices.size(); i++) {
-            int idx = _vertexMap.getVertexIndex(pathVertices[i]);
-            if (!isVertexAdded[idx]) {
-                vertices.push_back(pathVertices[i]);
-                isVertexAdded[idx] = true;
-            }
-        }
-    }
-
-    return vertices;
-}
-
-gen::MapGenerator::VertexList gen::MapGenerator::_getFixedRiverVertices(VertexList &riverVertices) {
     std::vector<bool> isVertexInRiver(_vertexMap.vertices.size(), false);
     for (unsigned int i = 0; i < riverVertices.size(); i++) {
         int idx = _vertexMap.getVertexIndex(riverVertices[i]);
         isVertexInRiver[idx] = true;
-    }
-
-    std::vector<bool> isEdgeProcessed(_voronoi.edges.size(), false);
-    std::vector<int> adjacentEdgeCount(_vertexMap.vertices.size(), 0);
-
-    dcel::HalfEdge h;
-    dcel::Vertex p1, p2;
-    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
-        h = _voronoi.edges[i];
-        if (!_isEdgeInMap(h) || isEdgeProcessed[h.id.ref]) { 
-            continue; 
-        }
-
-        p1 = _voronoi.origin(h);
-        p2 = _voronoi.origin(_voronoi.twin(h));
-        int idx1 = _vertexMap.getVertexIndex(p1);
-        int idx2 = _vertexMap.getVertexIndex(p2);
-
-        if (!isVertexInRiver[idx1] || !isVertexInRiver[idx2]) {
-            continue;
-        }
-
-        adjacentEdgeCount[idx1]++;
-        adjacentEdgeCount[idx2]++;
-
-        isEdgeProcessed[h.id.ref] = true;
-        isEdgeProcessed[h.twin.ref] = true;
     }
 
     VertexList fixedVertices;
-    for (unsigned int i = 0; i < adjacentEdgeCount.size(); i++) {
-        if (adjacentEdgeCount[i] == 1 || adjacentEdgeCount[i] == 3) {
-            fixedVertices.push_back(_vertexMap.vertices[i]);
-        }
-    }
-
-    return fixedVertices;
-}
-
-std::vector<gen::MapGenerator::VertexList> 
-gen::MapGenerator::_getRiverPaths(double isolevel) {
-    VertexList riverVertices = _getRiverVertices(isolevel);
-    std::vector<bool> isVertexInRiver(_vertexMap.vertices.size(), false);
-    for (unsigned int i = 0; i < riverVertices.size(); i++) {
-        int idx = _vertexMap.getVertexIndex(riverVertices[i]);
-        isVertexInRiver[idx] = true;
-    }
-
-    VertexList fixedVertices = _getFixedRiverVertices(riverVertices);
+    _getFixedRiverVertices(riverVertices, fixedVertices);
     std::vector<bool> isFixedVertex(_vertexMap.vertices.size(), false);
     for (unsigned int i = 0; i < fixedVertices.size(); i++) {
         int vidx = _vertexMap.getVertexIndex(fixedVertices[i]);
         isFixedVertex[vidx] = true;
     }
 
-    std::vector<VertexList> riverPaths;
     VertexList path;
     for (unsigned int i = 0; i < isFixedVertex.size(); i++) {
         if (!isFixedVertex[i]) {
@@ -800,8 +894,120 @@ gen::MapGenerator::_getRiverPaths(double isolevel) {
             riverPaths.push_back(path);
         }
     }
+}
 
-    return riverPaths;
+void gen::MapGenerator::_getRiverVertices(VertexList &vertices) {
+    std::vector<bool> isVertexAdded(_vertexMap.vertices.size(), false);
+
+    std::vector<bool> isLandFace;
+    _getLandFaces(isLandFace);
+
+    dcel::Vertex v;
+    VertexList pathVertices;
+    for (unsigned int i = 0; i < _vertexMap.vertices.size(); i++) {
+        v = _vertexMap.vertices[i];
+        if (_fluxMap(v) < _riverFluxThreshold || _isCoastVertex(i, isLandFace)) {
+            continue;
+        }
+
+        int next = _flowMap.getNodeIndex(v);
+        pathVertices.clear();
+        while (next != -1) {
+            pathVertices.push_back(_vertexMap.vertices[next]);
+            if (_isCoastVertex(next, isLandFace)) { 
+                break; 
+            }
+            if (!_isLandVertex(next, isLandFace)) { 
+                pathVertices.clear();
+                break; 
+            }
+            next = _flowMap(next);
+        }
+
+        if (pathVertices.empty()) { continue; }
+
+        for (unsigned int i = 0; i < pathVertices.size(); i++) {
+            int idx = _vertexMap.getVertexIndex(pathVertices[i]);
+            if (!isVertexAdded[idx]) {
+                vertices.push_back(pathVertices[i]);
+                isVertexAdded[idx] = true;
+            }
+        }
+    }
+}
+
+bool gen::MapGenerator::_isLandVertex(int vidx, std::vector<bool> &isLandFace) {
+    std::vector<dcel::Face> faces;
+    faces.reserve(6);
+    _voronoi.getIncidentFaces(_vertexMap.vertices[vidx], faces);
+
+    for (unsigned int i = 0; i < faces.size(); i++) {
+        if (isLandFace[faces[i].id.ref]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool gen::MapGenerator::_isCoastVertex(int vidx, std::vector<bool> &isLandFace) {
+    std::vector<dcel::Face> faces;
+    faces.reserve(6);
+    _voronoi.getIncidentFaces(_vertexMap.vertices[vidx], faces);
+
+    bool hasLand = false;
+    bool hasSea = false;
+    for (unsigned int i = 0; i < faces.size(); i++) {
+        if (isLandFace[faces[i].id.ref]) {
+            hasLand = true;
+        } else {
+            hasSea = true;
+        }
+    }
+
+    return hasLand && hasSea;
+}
+
+void gen::MapGenerator::_getFixedRiverVertices(VertexList &riverVertices, 
+                                               VertexList &fixedVertices) {
+    std::vector<bool> isVertexInRiver(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < riverVertices.size(); i++) {
+        int idx = _vertexMap.getVertexIndex(riverVertices[i]);
+        isVertexInRiver[idx] = true;
+    }
+
+    std::vector<bool> isEdgeProcessed(_voronoi.edges.size(), false);
+    std::vector<int> adjacentEdgeCounts(_vertexMap.vertices.size(), 0);
+
+    dcel::HalfEdge h;
+    dcel::Vertex p1, p2;
+    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
+        h = _voronoi.edges[i];
+        if (!_isEdgeInMap(h) || isEdgeProcessed[h.id.ref]) { 
+            continue; 
+        }
+
+        p1 = _voronoi.origin(h);
+        p2 = _voronoi.origin(_voronoi.twin(h));
+        int idx1 = _vertexMap.getVertexIndex(p1);
+        int idx2 = _vertexMap.getVertexIndex(p2);
+
+        if (!isVertexInRiver[idx1] || !isVertexInRiver[idx2]) {
+            continue;
+        }
+
+        adjacentEdgeCounts[idx1]++;
+        adjacentEdgeCounts[idx2]++;
+
+        isEdgeProcessed[h.id.ref] = true;
+        isEdgeProcessed[h.twin.ref] = true;
+    }
+
+    for (unsigned int i = 0; i < adjacentEdgeCounts.size(); i++) {
+        if (adjacentEdgeCounts[i] == 1 || adjacentEdgeCounts[i] == 3) {
+            fixedVertices.push_back(_vertexMap.vertices[i]);
+        }
+    }
 }
 
 gen::MapGenerator::VertexList gen::MapGenerator::_smoothPath(VertexList &path,
@@ -816,8 +1022,8 @@ gen::MapGenerator::VertexList gen::MapGenerator::_smoothPath(VertexList &path,
         dcel::Point v1 = path[i].position;
         dcel::Point v2 = path[i+1].position;
 
-        v1.x = factor*v1.x + (1-factor)*0.5*(v0.x + v2.x);
-        v1.y = factor*v1.y + (1-factor)*0.5*(v0.y + v2.y);
+        v1.x = (1-factor)*v1.x + factor*0.5*(v0.x + v2.x);
+        v1.y = (1-factor)*v1.y + factor*0.5*(v0.y + v2.y);
 
         smoothedPath[i].position = v1;
     }

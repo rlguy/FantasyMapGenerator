@@ -42,8 +42,8 @@ public:
     void outputEdgeVertices(std::string filename);
     void outputInteriorVertices(std::string filename);
     void outputHeightMap(std::string filename);
-    void outputContour(std::string filename, double isolevel);
-    void outputRivers(std::string filename, double isolevel);
+
+    void outputDrawData(std::string filename);
 
 private:
     typedef std::vector<dcel::Vertex> VertexList;
@@ -52,8 +52,6 @@ private:
     void _outputVertices(std::vector<dcel::Vertex> &verts, 
                          std::string filename);
     std::vector<double> _computeFaceHeights(NodeMap<double> &heightMap);
-    std::vector<double> _computeContour(double isolevel);
-    VertexList _getContourVertices(double isolevel);
     bool _isEdgeInMap(dcel::HalfEdge &h);
     bool _isContourEdge(dcel::HalfEdge &h, 
                         std::vector<double> &faceheights, 
@@ -65,10 +63,32 @@ private:
     double _calculateFluxCap(NodeMap<double> &fluxMap);
     void _calculateSlopeMap(NodeMap<double> &slopeMap);
     double _calculateSlope(int i);
-    std::vector<double> _computeRiverContour(double isolevel);
-    VertexList _getRiverVertices(double isolevel);
-    VertexList _getFixedRiverVertices(VertexList &riverVertices);
-    std::vector<VertexList> _getRiverPaths(double isolevel);
+
+    void _getContourDrawData(std::vector<std::vector<double> > &data);
+    void _getContourPaths(std::vector<VertexList> &paths);
+    void _getLandFaces(std::vector<bool> &isLandFace);
+    void _getFaceHeights(std::vector<double> &faceHeights);
+    bool _isLand(double isolevel);
+    void _cleanupLandFaces(std::vector<bool> &isLandFace);
+    void _getConnectedFaces(int seed, std::vector<bool> &isLandFace,
+                            std::vector<bool> &isFaceProcessed,
+                            std::vector<int> &faces);
+    bool _isContourEdge(dcel::HalfEdge &h, std::vector<bool> &isLandFace);
+    bool _isContourEdge(dcel::Vertex &v1, dcel::Vertex &v2, 
+                        std::vector<bool> &isLandFace);
+    void _getContourPath(int seed, std::vector<bool> &isContourVertex, 
+                                   std::vector<bool> &isEndVertex, 
+                                   std::vector<bool> &isLandFace,
+                                   std::vector<bool> &isVertexInContour, 
+                                   VertexList &path);
+
+    void _getRiverDrawData(std::vector<std::vector<double> > &data);
+    void _getRiverPaths(std::vector<VertexList> &paths);
+    void _getRiverVertices(VertexList &vertices);
+    bool _isLandVertex(int vidx, std::vector<bool> &isLandFace);
+    bool _isCoastVertex(int vidx, std::vector<bool> &isLandFace);
+    void _getFixedRiverVertices(VertexList &riverVertices, 
+                                VertexList &fixedVertices);
     VertexList _smoothPath(VertexList &path,
                            double factor);
 
@@ -88,8 +108,10 @@ private:
     double _erosionRiverFactor = 500.0;
     double _erosionCreepFactor = 500.0;
     double _defaultErodeAmount = 0.1;
-    double _riverFluxThreshold = 0.05;
+    double _riverFluxThreshold = 0.02;
     double _riverSmoothingFactor = 0.5;
+    double _isolevel = 0.0;
+    double _minIslandFaceThreshold = 35;
 
 };
 
