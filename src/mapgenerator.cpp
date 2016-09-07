@@ -303,6 +303,9 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     std::vector<std::vector<double> > riverData;
     _getRiverDrawData(riverData);
 
+    std::vector<double> slopeData;
+    _getSlopeDrawData(slopeData);
+
     double width = _extents.maxx - _extents.minx;
     double height = _extents.maxy - _extents.miny;
     double aspectratio = width / height;
@@ -311,6 +314,7 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     output["aspect_ratio"] = aspectratio;
     output["contour"] = contourData;
     output["river"] = riverData;
+    output["slope"] = slopeData;
 
     std::ofstream file(filename);
     file << output;
@@ -370,6 +374,33 @@ std::vector<double> gen::MapGenerator::_computeFaceHeights(NodeMap<double> &heig
     }
 
     return faceheights;
+}
+
+std::vector<dcel::Point> gen::MapGenerator::_computeFacePositions() {
+    std::vector<dcel::Point> positions;
+    positions.reserve(_voronoi.faces.size());
+
+    dcel::Face f;
+    dcel::Point p;
+    std::vector<dcel::HalfEdge> edges;
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        f = _voronoi.faces[i];
+
+        edges.clear();
+        _voronoi.getOuterComponents(f, edges);
+
+        double sumx = 0.0;
+        double sumy = 0.0;
+        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
+            p = _voronoi.origin(edges[eidx]).position;
+            sumx += p.x;
+            sumy += p.y;
+        }
+        positions.push_back(dcel::Point(sumx / edges.size(), 
+                                        sumy / edges.size()));
+    }
+
+    return positions;
 }
 
 bool gen::MapGenerator::_isEdgeInMap(dcel::HalfEdge &h) {
@@ -548,30 +579,8 @@ double gen::MapGenerator::_calculateSlope(int i) {
         return 0.0;
     }
 
-    VertexList nbs;
-    nbs.reserve(3);
-    _vertexMap.getNeighbours(v, nbs);
-    if (nbs.size() != 3) {
-        return 0.0;
-    }
-
-    dcel::Point p0 = nbs[0].position;
-    dcel::Point p1 = nbs[1].position;
-    dcel::Point p2 = nbs[2].position;
-
-    double v0x = p1.x - p0.x;
-    double v0y = p1.y - p0.y;
-    double v0z = _heightMap(nbs[1]) - _heightMap(nbs[0]);
-    double v1x = p2.x - p0.x;
-    double v1y = p2.y - p0.y;
-    double v1z = _heightMap(nbs[2]) - _heightMap(nbs[0]);
-
-    double nx = v0y*v1z - v0z*v1y;
-    double ny = v0z*v1x - v0x*v1z;
-    double nz = v0x*v1y - v0y*v1x;
-    double invlen = 1.0 / sqrt(nx*nx + ny*ny + nz*nz);
-    nx *= invlen;
-    ny *= invlen;
+    double nx, ny, nz;
+    _calculateVertexNormal(i, &nx, &ny, &nz);
 
     double slope = sqrt(nx*nx + ny*ny);
 
@@ -1029,4 +1038,138 @@ gen::MapGenerator::VertexList gen::MapGenerator::_smoothPath(VertexList &path,
     }
 
     return smoothedPath;
+}
+
+void gen::MapGenerator::_getSlopeDrawData(std::vector<double> &data) {
+    std::vector<Segment> slopeSegments;
+    _getSlopeSegments(slopeSegments);
+
+    double invwidth = 1.0 / (_extents.maxx - _extents.minx);
+    double invheight = 1.0 / (_extents.maxy - _extents.miny);
+    for (unsigned int i = 0; i < slopeSegments.size(); i++) {
+        Segment s = slopeSegments[i];
+
+        double nx1 = (s.p1.x - _extents.minx) * invwidth;
+        double ny1 = (s.p1.y - _extents.miny) * invheight;
+        double nx2 = (s.p2.x - _extents.minx) * invwidth;
+        double ny2 = (s.p2.y - _extents.miny) * invheight;
+
+        data.push_back(nx1);
+        data.push_back(ny1);
+        data.push_back(nx2);
+        data.push_back(ny2);
+    }
+}
+
+void gen::MapGenerator::_getSlopeSegments(std::vector<Segment> &segments) {
+    NodeMap<double> slopeMap(&_vertexMap, 0.0);
+    _calculateHorizontalSlopeMap(slopeMap);
+
+    NodeMap<double> nearSlopeMap(&_vertexMap, 0.0);
+    _calculateVerticalSlopeMap(nearSlopeMap);
+
+    std::vector<double> faceSlopes = _computeFaceHeights(slopeMap);
+    std::vector<double> nearSlopes = _computeFaceHeights(nearSlopeMap);
+    std::vector<dcel::Point> facePositions = _computeFacePositions();
+
+    std::vector<bool> isLandFace;
+    _getLandFaces(isLandFace);
+
+    for (unsigned int i = 0; i < faceSlopes.size(); i++) {
+        double slope = faceSlopes[i];
+        if (!isLandFace[i] || fabs(slope) < _minSlopeThreshold) {
+            continue;
+        }
+
+        double factor = (fabs(slope) - _minSlope) / (_maxSlope - _minSlope);
+        factor = fmin(1.0, factor);
+        factor = fmax(0.0, factor);
+
+        double angle = _minSlopeAngle + factor * (_maxSlopeAngle - _minSlopeAngle);
+        angle = slope < 0 ? angle : -angle;
+
+        double dirx =  cos(angle);
+        double diry =  sin(angle);
+        
+        double minlength = _minSlopeLength*_resolution;
+        double maxlength = _maxSlopeLength*_resolution;
+        double minv = _minVerticalSlope;
+        double maxv = _maxVerticalSlope;
+        double vslope = nearSlopes[i];
+        double nf = (vslope - minv) / (maxv - minv);
+        nf = fmin(1.0, nf);
+        nf = fmax(0.0, nf);
+        double length = minlength + nf * (maxlength - minlength);
+
+        Segment s;
+        s.p1 = facePositions[i];
+        s.p2 = dcel::Point(s.p1.x + dirx*length, s.p1.y + diry*length);
+        segments.push_back(s);
+    }
+}
+
+void gen::MapGenerator::_calculateHorizontalSlopeMap(NodeMap<double> &slopeMap) {
+    for (unsigned int i = 0; i < slopeMap.size(); i++) {
+        slopeMap.set(i, _calculateHorizontalSlope(i));
+    }
+}
+
+double gen::MapGenerator::_calculateHorizontalSlope(int i) {
+    dcel::Vertex v = _vertexMap.vertices[i];
+    if (!_vertexMap.isInterior(v)) {
+        return 0.0;
+    }
+
+    double nx, ny, nz;
+    _calculateVertexNormal(i, &nx, &ny, &nz);
+
+    return nx;
+}
+
+void gen::MapGenerator::_calculateVerticalSlopeMap(NodeMap<double> &slopeMap) {
+    for (unsigned int i = 0; i < slopeMap.size(); i++) {
+        slopeMap.set(i, _calculateVerticalSlope(i));
+    }
+}
+
+double gen::MapGenerator::_calculateVerticalSlope(int i) {
+    dcel::Vertex v = _vertexMap.vertices[i];
+    if (!_vertexMap.isInterior(v)) {
+        return 0.0;
+    }
+
+    double nx, ny, nz;
+    _calculateVertexNormal(i, &nx, &ny, &nz);
+
+    return ny;
+}
+
+void gen::MapGenerator::_calculateVertexNormal(int vidx, 
+                                                 double *nx, double *ny, double *nz) {
+    dcel::Vertex v = _vertexMap.vertices[vidx];
+    VertexList nbs;
+    nbs.reserve(3);
+    _vertexMap.getNeighbours(v, nbs);
+    if (nbs.size() != 3) {
+        return;
+    }
+
+    dcel::Point p0 = nbs[0].position;
+    dcel::Point p1 = nbs[1].position;
+    dcel::Point p2 = nbs[2].position;
+
+    double v0x = p1.x - p0.x;
+    double v0y = p1.y - p0.y;
+    double v0z = _heightMap(nbs[1]) - _heightMap(nbs[0]);
+    double v1x = p2.x - p0.x;
+    double v1y = p2.y - p0.y;
+    double v1z = _heightMap(nbs[2]) - _heightMap(nbs[0]);
+
+    double vnx = v0y*v1z - v0z*v1y;
+    double vny = v0z*v1x - v0x*v1z;
+    double vnz = v0x*v1y - v0y*v1x;
+    double invlen = 1.0 / sqrt(vnx*vnx + vny*vny + vnz*vnz);
+    *nx = vnx * invlen;
+    *ny = vny * invlen;
+    *nz = vnz * invlen;
 }

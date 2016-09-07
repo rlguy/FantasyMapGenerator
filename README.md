@@ -51,3 +51,7 @@ The height map is then eroded by using the flow map data and terrain slope data.
 Paths representing rivers are generated at points where the amount of flux (river current) is above some threshold. The path of the river follows the flow map until it reaches a coastline or the edge of the map.
 
 ![alt tag](http://rlguy.com/map_generation/images/river_generation.jpg)
+
+The height map is shaded based upon the horizontal component of the slope. Short strokes are drawn at faces where the slope is above some threshold. Strokes pointing upwards from left to right are drawn if the height map is sloping upward from left to right, and strokes pointing downward from left to right are drawn if the height map is sloping downward from left to right.
+
+![alt tag](http://rlguy.com/map_generation/images/slope_shading.jpg)

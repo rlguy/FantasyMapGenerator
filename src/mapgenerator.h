@@ -48,10 +48,16 @@ public:
 private:
     typedef std::vector<dcel::Vertex> VertexList;
 
+    struct Segment {
+        dcel::Point p1;
+        dcel::Point p2;
+    };
+
     jsoncons::json _getExtentsJSON();
     void _outputVertices(std::vector<dcel::Vertex> &verts, 
                          std::string filename);
     std::vector<double> _computeFaceHeights(NodeMap<double> &heightMap);
+    std::vector<dcel::Point> _computeFacePositions();
     bool _isEdgeInMap(dcel::HalfEdge &h);
     bool _isContourEdge(dcel::HalfEdge &h, 
                         std::vector<double> &faceheights, 
@@ -92,6 +98,14 @@ private:
     VertexList _smoothPath(VertexList &path,
                            double factor);
 
+    void _getSlopeDrawData(std::vector<double> &data);
+    void _getSlopeSegments(std::vector<Segment> &segments);
+    void _calculateHorizontalSlopeMap(NodeMap<double> &slopeMap);
+    double _calculateHorizontalSlope(int i);
+    void _calculateVerticalSlopeMap(NodeMap<double> &slopeMap);
+    double _calculateVerticalSlope(int i);
+    void _calculateVertexNormal(int vidx, double *nx, double *ny, double *nz);
+
     Extents2d _extents;
     double _resolution;
 
@@ -108,10 +122,20 @@ private:
     double _erosionRiverFactor = 500.0;
     double _erosionCreepFactor = 500.0;
     double _defaultErodeAmount = 0.1;
-    double _riverFluxThreshold = 0.02;
+    double _riverFluxThreshold = 0.05;
     double _riverSmoothingFactor = 0.5;
     double _isolevel = 0.0;
     double _minIslandFaceThreshold = 35;
+
+    double _minSlopeThreshold = 0.09;
+    double _minSlope = 0.0;
+    double _maxSlope = 0.7;
+    double _minSlopeAngle = 0.2;
+    double _maxSlopeAngle = 1.4;
+    double _minSlopeLength = 0.75;
+    double _maxSlopeLength = 1.0;
+    double _minVerticalSlope = -0.25;
+    double _maxVerticalSlope = 0.05;
 
 };
 
