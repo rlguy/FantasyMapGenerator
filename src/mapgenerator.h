@@ -37,12 +37,10 @@ public:
     void erode(double amount);
     void erode();
 
-    void outputVoronoiDiagram(std::string filename);
-    void outputVertices(std::string filename);
-    void outputEdgeVertices(std::string filename);
-    void outputInteriorVertices(std::string filename);
-    void outputHeightMap(std::string filename);
+    void addCity();
 
+    void outputVoronoiDiagram(std::string filename);
+    void outputHeightMap(std::string filename);
     void outputDrawData(std::string filename);
 
 private:
@@ -53,11 +51,16 @@ private:
         dcel::Point p2;
     };
 
+    struct City {
+        dcel::Point position;
+    };
+
     jsoncons::json _getExtentsJSON();
     void _outputVertices(std::vector<dcel::Vertex> &verts, 
                          std::string filename);
-    std::vector<double> _computeFaceHeights(NodeMap<double> &heightMap);
+    std::vector<double> _computeFaceValues(NodeMap<double> &heightMap);
     std::vector<dcel::Point> _computeFacePositions();
+    dcel::Point _computeFacePosition(int fidx);
     bool _isEdgeInMap(dcel::HalfEdge &h);
     bool _isContourEdge(dcel::HalfEdge &h, 
                         std::vector<double> &faceheights, 
@@ -106,6 +109,12 @@ private:
     double _calculateVerticalSlope(int i);
     void _calculateVertexNormal(int vidx, double *nx, double *ny, double *nz);
 
+    void _getCityDrawData(std::vector<double> &data);
+    dcel::Point _getCityLocation();
+    void _getCityScores(NodeMap<double> &cityScores);
+    double _getPointDistance(dcel::Point &p1, dcel::Point &p2);
+    double _pointToEdgeDistance(dcel::Point p);
+
     Extents2d _extents;
     double _resolution;
 
@@ -131,12 +140,18 @@ private:
     double _minSlope = 0.0;
     double _maxSlope = 0.7;
     double _minSlopeAngle = 0.2;
-    double _maxSlopeAngle = 1.4;
+    double _maxSlopeAngle = 1.5;
     double _minSlopeLength = 0.75;
     double _maxSlopeLength = 1.0;
     double _minVerticalSlope = -0.25;
     double _maxVerticalSlope = 0.05;
 
+    double _fluxScoreBonus = 2.0;
+    double _nearEdgeScorePenalty = 0.03;
+    double _nearCityScorePenalty = 2.0;
+    double _maxPenaltyDistance = 4.0;
+
+    std::vector<City> _cities;
 };
 
 }

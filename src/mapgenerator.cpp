@@ -204,6 +204,17 @@ void gen::MapGenerator::erode(double amount) {
     }
 }
 
+void gen::MapGenerator::addCity() {
+    if (!_isInitialized) {
+        throw std::runtime_error("MapGenerator must be initialized.");
+    }
+    std::cout << "add city" << std::endl;
+
+    City city;
+    city.position = _getCityLocation();
+    _cities.push_back(city);
+}
+
 void gen::MapGenerator::outputVoronoiDiagram(std::string filename) {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
@@ -243,36 +254,12 @@ void gen::MapGenerator::outputVoronoiDiagram(std::string filename) {
     file.close();
 }
 
-void gen::MapGenerator::outputVertices(std::string filename) {
-    if (!_isInitialized) {
-        throw std::runtime_error("MapGenerator must be initialized.");
-    }
-
-    _outputVertices(_vertexMap.vertices, filename);
-}
-
-void gen::MapGenerator::outputEdgeVertices(std::string filename) {
-    if (!_isInitialized) {
-        throw std::runtime_error("MapGenerator must be initialized.");
-    }
-
-    _outputVertices(_vertexMap.edge, filename);
-}
-
-void gen::MapGenerator::outputInteriorVertices(std::string filename) {
-    if (!_isInitialized) {
-        throw std::runtime_error("MapGenerator must be initialized.");
-    }
-
-    _outputVertices(_vertexMap.interior, filename);
-}
-
 void gen::MapGenerator::outputHeightMap(std::string filename) {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
 
-    std::vector<double> facecolors = _computeFaceHeights(_heightMap);
+    std::vector<double> facecolors = _computeFaceValues(_heightMap);
     double min = facecolors[0];
     double max = facecolors[0];
     for (unsigned int i = 0; i < facecolors.size(); i++) {
@@ -306,6 +293,9 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     std::vector<double> slopeData;
     _getSlopeDrawData(slopeData);
 
+    std::vector<double> cityData;
+    _getCityDrawData(cityData);
+
     double width = _extents.maxx - _extents.minx;
     double height = _extents.maxy - _extents.miny;
     double aspectratio = width / height;
@@ -315,6 +305,7 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     output["contour"] = contourData;
     output["river"] = riverData;
     output["slope"] = slopeData;
+    output["city"] = cityData;
 
     std::ofstream file(filename);
     file << output;
@@ -349,7 +340,7 @@ void gen::MapGenerator::_outputVertices(VertexList &verts,
     file.close();
 }
 
-std::vector<double> gen::MapGenerator::_computeFaceHeights(NodeMap<double> &heightMap) {
+std::vector<double> gen::MapGenerator::_computeFaceValues(NodeMap<double> &heightMap) {
     std::vector<double> faceheights;
     faceheights.reserve(_voronoi.faces.size());
 
@@ -401,6 +392,24 @@ std::vector<dcel::Point> gen::MapGenerator::_computeFacePositions() {
     }
 
     return positions;
+}
+
+dcel::Point gen::MapGenerator::_computeFacePosition(int fidx) {
+    dcel::Face f = _voronoi.faces[fidx];
+    std::vector<dcel::HalfEdge> edges;
+    _voronoi.getOuterComponents(f, edges);
+
+    dcel::Point p;
+    double sumx = 0.0;
+    double sumy = 0.0;
+    for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
+        p = _voronoi.origin(edges[eidx]).position;
+        sumx += p.x;
+        sumy += p.y;
+    }
+
+    return dcel::Point(sumx / edges.size(), 
+                       sumy / edges.size());
 }
 
 bool gen::MapGenerator::_isEdgeInMap(dcel::HalfEdge &h) {
@@ -1068,8 +1077,8 @@ void gen::MapGenerator::_getSlopeSegments(std::vector<Segment> &segments) {
     NodeMap<double> nearSlopeMap(&_vertexMap, 0.0);
     _calculateVerticalSlopeMap(nearSlopeMap);
 
-    std::vector<double> faceSlopes = _computeFaceHeights(slopeMap);
-    std::vector<double> nearSlopes = _computeFaceHeights(nearSlopeMap);
+    std::vector<double> faceSlopes = _computeFaceValues(slopeMap);
+    std::vector<double> nearSlopes = _computeFaceValues(nearSlopeMap);
     std::vector<dcel::Point> facePositions = _computeFacePositions();
 
     std::vector<bool> isLandFace;
@@ -1172,4 +1181,86 @@ void gen::MapGenerator::_calculateVertexNormal(int vidx,
     *nx = vnx * invlen;
     *ny = vny * invlen;
     *nz = vnz * invlen;
+}
+
+void gen::MapGenerator::_getCityDrawData(std::vector<double> &data) {
+    double invwidth = 1.0 / (_extents.maxx - _extents.minx);
+    double invheight = 1.0 / (_extents.maxy - _extents.miny);
+    for (unsigned int i = 0; i < _cities.size(); i++) {
+        dcel::Point p = _cities[i].position;
+        double nx = (p.x - _extents.minx) * invwidth;
+        double ny = (p.y - _extents.miny) * invheight;
+
+        data.push_back(nx);
+        data.push_back(ny);
+    }
+}
+
+dcel::Point gen::MapGenerator::_getCityLocation() {
+    NodeMap<double> cityScores(&_vertexMap, 0.0);
+    _getCityScores(cityScores);
+
+    std::vector<double> faceScores = _computeFaceValues(cityScores);
+    std::vector<dcel::Point> facePositions = _computeFacePositions();
+    double maxScore = -std::numeric_limits<double>::infinity();
+    double cityfidx = -1;
+    for (unsigned int i = 0; i < faceScores.size(); i++) {
+        dcel::Point fp = facePositions[i];
+        if (_extents.containsPoint(fp) && faceScores[i] > maxScore) {
+            maxScore = faceScores[i];
+            cityfidx = i;
+        }
+    }
+
+    return _computeFacePosition(cityfidx);
+}
+
+void gen::MapGenerator::_getCityScores(NodeMap<double> &cityScores) {
+    NodeMap<double> fluxMap = _fluxMap;
+    fluxMap.relax();
+
+    std::vector<bool> isLandFace;
+    _getLandFaces(isLandFace);
+
+    double neginf = -1e2;
+    double eps = 1e-6;
+    dcel::Point p;
+    for (unsigned int i = 0; i < cityScores.size(); i++) {
+        double score = 0.0;
+        if (!_isLandVertex(i, isLandFace) || _isCoastVertex(i, isLandFace)) {
+            score += neginf;
+        }
+
+        score += _fluxScoreBonus * sqrt(fluxMap(i));
+
+        p = _vertexMap.vertices[i].position;
+        double extentsDist = fmax(0.0, _pointToEdgeDistance(p));
+        score -= _nearEdgeScorePenalty * (1.0 / (extentsDist + eps));
+
+        for (unsigned int cidx = 0; cidx < _cities.size(); cidx++) {
+            dcel::Point cp = _cities[cidx].position;
+            double dist = fmin(_getPointDistance(p, cp), _maxPenaltyDistance);
+            double distfactor = 1 - dist / _maxPenaltyDistance;
+            score -= _nearCityScorePenalty * distfactor;
+        }
+
+        score = fmax(neginf, score);
+        cityScores.set(i, score);
+    }
+}
+
+double gen::MapGenerator::_getPointDistance(dcel::Point &p1, dcel::Point &p2) {
+    double dx = p1.x - p2.x;
+    double dy = p1.y - p2.y;
+    return sqrt(dx*dx + dy*dy);
+}
+
+double gen::MapGenerator::_pointToEdgeDistance(dcel::Point p) {
+    double mindist = std::numeric_limits<double>::infinity();
+    mindist = fmin(mindist, p.x - _extents.minx);
+    mindist = fmin(mindist, _extents.maxx - p.x);
+    mindist = fmin(mindist, p.y - _extents.miny);
+    mindist = fmin(mindist, _extents.maxy - p.y);
+
+    return mindist;
 }

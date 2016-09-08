@@ -55,3 +55,11 @@ Paths representing rivers are generated at points where the amount of flux (rive
 The height map is shaded based upon the horizontal component of the slope. Short strokes are drawn at faces where the slope is above some threshold. Strokes pointing upwards from left to right are drawn if the height map is sloping upward from left to right, and strokes pointing downward from left to right are drawn if the height map is sloping downward from left to right.
 
 ![alt tag](http://rlguy.com/map_generation/images/slope_shading.jpg)
+
+Cities are placed at locations where the city score value is at a maximum.
+
+![alt tag](http://rlguy.com/map_generation/images/city_locations.jpg)
+
+City score values are computed before the placement of a city and have a bonus at locations where there is a high flux value and a penalty at locations that are too close to other cities or too close to the edge of the map.
+
+![alt tag](http://rlguy.com/map_generation/images/city_scores.jpg)
