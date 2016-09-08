@@ -147,7 +147,7 @@ private:
     double _maxVerticalSlope = 0.05;
 
     double _fluxScoreBonus = 2.0;
-    double _nearEdgeScorePenalty = 0.03;
+    double _nearEdgeScorePenalty = 0.1;
     double _nearCityScorePenalty = 2.0;
     double _maxPenaltyDistance = 4.0;
 

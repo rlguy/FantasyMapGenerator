@@ -99,10 +99,10 @@ bool PoissonDiscSampler::_isSampleValid(dcel::Point &p, double r,
         return false;
     }
 
-    int mini = fmax(g.i - 2, 0);
-    int minj = fmax(g.j - 2, 0);
-    int maxi = fmin(g.i + 2, grid.width - 1);
-    int maxj = fmin(g.j + 2, grid.height - 1);
+    int mini = (int)fmax(g.i - 2, 0);
+    int minj = (int)fmax(g.j - 2, 0);
+    int maxi = (int)fmin(g.i + 2, grid.width - 1);
+    int maxj = (int)fmin(g.j + 2, grid.height - 1);
 
     double rsq = r*r;
     for (int j = minj; j <= maxj; j++) {

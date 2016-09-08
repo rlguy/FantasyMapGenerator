@@ -311,6 +311,8 @@ public:
         {
             string_data data;
             char_type c[1];
+
+            string_dataA() {}
         };
         typedef typename std::aligned_storage<sizeof(string_dataA), JSONCONS_ALIGNOF(string_dataA)>::type storage_type;
 

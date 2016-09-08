@@ -130,7 +130,7 @@ dcel::Face Delaunay::_locateTriangleAtPoint(dcel::Point &p, dcel::DCEL &T) {
     Face f = T.getFace(randfidx);
 
     int count = 0;
-    int maxcount = 2.0*sqrt(T.faces.size());
+    int maxcount = (int)(2.0*sqrt(T.faces.size()));
 
     int faceHistory[3] = {-1, -1, -1};
     HalfEdge h;

@@ -32,8 +32,8 @@ namespace PoissonDiscSampler {
             dx = cellsize;
             double bw = bounds.maxx - bounds.minx;
             double bh = bounds.maxy - bounds.miny;
-            width = ceil(bw / cellsize);
-            height = ceil(bh / cellsize);
+            width = (int)ceil(bw / cellsize);
+            height = (int)ceil(bh / cellsize);
             grid = std::vector<int>(width*height, -1);
         }
 
@@ -70,7 +70,7 @@ namespace PoissonDiscSampler {
         GridIndex getCell(double x, double y) {
             x -= bounds.minx;
             y -= bounds.miny;
-            return GridIndex(floor(x / dx), floor(y / dx));
+            return GridIndex((int)floor(x / dx), (int)floor(y / dx));
         }
     };
 

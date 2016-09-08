@@ -56,10 +56,12 @@ The height map is shaded based upon the horizontal component of the slope. Short
 
 ![alt tag](http://rlguy.com/map_generation/images/slope_shading.jpg)
 
+City score values are computed before the placement of a city and have a bonus at locations where there is a high flux value and a penalty at locations that are too close to other cities or too close to the edge of the map.
+
+![alt tag](http://rlguy.com/map_generation/images/city_scores.jpg)
+
 Cities are placed at locations where the city score value is at a maximum.
 
 ![alt tag](http://rlguy.com/map_generation/images/city_locations.jpg)
 
-City score values are computed before the placement of a city and have a bonus at locations where there is a high flux value and a penalty at locations that are too close to other cities or too close to the edge of the map.
 
-![alt tag](http://rlguy.com/map_generation/images/city_scores.jpg)

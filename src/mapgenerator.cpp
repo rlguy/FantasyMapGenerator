@@ -208,7 +208,6 @@ void gen::MapGenerator::addCity() {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
-    std::cout << "add city" << std::endl;
 
     City city;
     city.position = _getCityLocation();
@@ -549,16 +548,16 @@ double gen::MapGenerator::_calculateFluxCap(NodeMap<double> &fluxMap) {
     double max = fluxMap.max();
 
     int nbins = 1000;
-    int bins[1000];
-    for (int i = 0; i < nbins; i++) {
-        bins[i] = 0;
-    }
+    std::vector<int> bins(nbins, 0);
 
     double step = (double)max / (double)nbins;
     double invstep = 1.0 / step;
     for (unsigned int i = 0; i < fluxMap.size(); i++) {
         double f = fluxMap(i);
-        int binidx = floor(f * invstep);
+        int binidx = (int)floor(f * invstep);
+        if (binidx >= bins.size()) {
+            binidx = bins.size() - 1;
+        }
         bins[binidx]++;
     }
 
@@ -1203,7 +1202,7 @@ dcel::Point gen::MapGenerator::_getCityLocation() {
     std::vector<double> faceScores = _computeFaceValues(cityScores);
     std::vector<dcel::Point> facePositions = _computeFacePositions();
     double maxScore = -std::numeric_limits<double>::infinity();
-    double cityfidx = -1;
+    int cityfidx = -1;
     for (unsigned int i = 0; i < faceScores.size(); i++) {
         dcel::Point fp = facePositions[i];
         if (_extents.containsPoint(fp) && faceScores[i] > maxScore) {

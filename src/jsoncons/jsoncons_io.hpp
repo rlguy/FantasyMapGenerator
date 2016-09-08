@@ -46,6 +46,8 @@ public:
         os_->flush();
     }
 
+    buffered_ostream& operator=(const buffered_ostream &tmp) {}
+
     void flush()
     {
         os_->write(begin_buffer_, (p_ - begin_buffer_));
@@ -98,7 +100,7 @@ class float_printer
     uint8_t precision_;
 public:
     float_printer(int precision)
-        : precision_(precision)
+        : precision_((uint8_t)precision)
     {
     }
 
@@ -153,7 +155,7 @@ public:
             for(;;) 
             {
                 i = decimal_point / k;
-                os.put(i + '0');
+                os.put((char)i + '0');
                 if (--j <= 0)
                     break;
                 decimal_point -= i*k;
@@ -267,8 +269,9 @@ public:
         _free_locale(locale_);
     }
 
-    double read(const char* s, size_t length)
+    double read(const char* s, size_t)
     {
+
         const char *begin = s;
         char *end = nullptr;
         double val = _strtod_l(begin, &end, locale_);
