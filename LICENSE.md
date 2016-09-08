@@ -43,3 +43,7 @@ src/jsoncons is jsoncons, which may be obtained at https://github.com/danielapar
 	FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
 	ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 	DEALINGS IN THE SOFTWARE.
+
+src/data/countrycities.json uses data from GeoNames, which may be obtained at http://download.geonames.org/export/dump/cities5000.zip
+This work is licensed under a Creative Commons Attribution 3.0 License,
+see http://creativecommons.org/licenses/by/3.0/
