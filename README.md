@@ -56,6 +56,8 @@ The height map is shaded based upon the horizontal component of the slope. Short
 
 ![alt tag](http://rlguy.com/map_generation/images/slope_shading.jpg)
 
+## Generating Cities and Borders
+
 City score values are computed before the placement of a city and have a bonus at locations where there is a high flux value and a penalty at locations that are too close to other cities or too close to the edge of the map.
 
 ![alt tag](http://rlguy.com/map_generation/images/city_scores.jpg)
@@ -64,4 +66,18 @@ Cities are placed at locations where the city score value is at a maximum.
 
 ![alt tag](http://rlguy.com/map_generation/images/city_locations.jpg)
 
+For each city, the movement cost is calculated for each tile (Voronoi face). Movement costs are based on horizontal and vertical distance, amount of flux (crossing rivers), and transitioning from land to sea (or sea to land).
 
+![alt tag](http://rlguy.com/map_generation/images/movement_costs.jpg)
+
+The tiles are then divided amongst the cities depending on who has the lowest movement cost for the tile.
+
+![alt tag](http://rlguy.com/map_generation/images/territories_unclean.jpg)
+
+This method tends to create jagged borders and disjointed territories. The territories are cleaned up by smoothing the edges and by instating a rule that a city territory must contain the city and be a contiguous region.
+
+![alt tag](http://rlguy.com/map_generation/images/territories_clean.jpg)
+
+Borders are then generated around the city territories.
+
+![alt tag](http://rlguy.com/map_generation/images/territory_borders.jpg)

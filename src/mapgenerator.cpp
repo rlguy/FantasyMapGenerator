@@ -209,9 +209,27 @@ void gen::MapGenerator::addCity() {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
 
+    CityLocation loc = _getCityLocation();
+
     City city;
-    city.position = _getCityLocation();
+    city.position = loc.position;
+    city.faceid = loc.faceid;
+    _updateCityMovementCost(city);
+
     _cities.push_back(city);
+}
+
+void gen::MapGenerator::addTown() {
+    if (!_isInitialized) {
+        throw std::runtime_error("MapGenerator must be initialized.");
+    }
+
+    CityLocation loc = _getCityLocation();
+
+    Town town;
+    town.position = loc.position;
+    town.faceid = loc.faceid;
+    _towns.push_back(town);
 }
 
 void gen::MapGenerator::outputVoronoiDiagram(std::string filename) {
@@ -295,6 +313,12 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     std::vector<double> cityData;
     _getCityDrawData(cityData);
 
+    std::vector<double> townData;
+    _getTownDrawData(townData);
+
+    std::vector<std::vector<double> > territoryData;
+    _getTerritoryDrawData(territoryData);
+
     double width = _extents.maxx - _extents.minx;
     double height = _extents.maxy - _extents.miny;
     double aspectratio = width / height;
@@ -305,6 +329,8 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     output["river"] = riverData;
     output["slope"] = slopeData;
     output["city"] = cityData;
+    output["town"] = townData;
+    output["territory"] = territoryData;
 
     std::ofstream file(filename);
     file << output;
@@ -555,7 +581,7 @@ double gen::MapGenerator::_calculateFluxCap(NodeMap<double> &fluxMap) {
     for (unsigned int i = 0; i < fluxMap.size(); i++) {
         double f = fluxMap(i);
         int binidx = (int)floor(f * invstep);
-        if (binidx >= bins.size()) {
+        if (binidx >= (int)bins.size()) {
             binidx = bins.size() - 1;
         }
         bins[binidx]++;
@@ -1195,7 +1221,20 @@ void gen::MapGenerator::_getCityDrawData(std::vector<double> &data) {
     }
 }
 
-dcel::Point gen::MapGenerator::_getCityLocation() {
+void gen::MapGenerator::_getTownDrawData(std::vector<double> &data) {
+    double invwidth = 1.0 / (_extents.maxx - _extents.minx);
+    double invheight = 1.0 / (_extents.maxy - _extents.miny);
+    for (unsigned int i = 0; i < _towns.size(); i++) {
+        dcel::Point p = _towns[i].position;
+        double nx = (p.x - _extents.minx) * invwidth;
+        double ny = (p.y - _extents.miny) * invheight;
+
+        data.push_back(nx);
+        data.push_back(ny);
+    }
+}
+
+gen::MapGenerator::CityLocation gen::MapGenerator::_getCityLocation() {
     NodeMap<double> cityScores(&_vertexMap, 0.0);
     _getCityScores(cityScores);
 
@@ -1211,7 +1250,11 @@ dcel::Point gen::MapGenerator::_getCityLocation() {
         }
     }
 
-    return _computeFacePosition(cityfidx);
+    CityLocation loc;
+    loc.position = _computeFacePosition(cityfidx);
+    loc.faceid = cityfidx;
+
+    return loc;
 }
 
 void gen::MapGenerator::_getCityScores(NodeMap<double> &cityScores) {
@@ -1243,6 +1286,13 @@ void gen::MapGenerator::_getCityScores(NodeMap<double> &cityScores) {
             score -= _nearCityScorePenalty * distfactor;
         }
 
+        for (unsigned int tidx = 0; tidx < _towns.size(); tidx++) {
+            dcel::Point tp = _towns[tidx].position;
+            double dist = fmin(_getPointDistance(p, tp), _maxPenaltyDistance);
+            double distfactor = 1 - dist / _maxPenaltyDistance;
+            score -= _nearTownScorePenalty * distfactor;
+        }
+
         score = fmax(neginf, score);
         cityScores.set(i, score);
     }
@@ -1262,4 +1312,447 @@ double gen::MapGenerator::_pointToEdgeDistance(dcel::Point p) {
     mindist = fmin(mindist, _extents.maxy - p.y);
 
     return mindist;
+}
+
+void gen::MapGenerator::_updateCityMovementCost(City &city) {
+    std::vector<bool> isLand;
+    std::vector<double> faceHeights;
+    _getLandFaces(isLand);
+    _getFaceHeights(faceHeights);
+    std::vector<double> faceFlux = _computeFaceValues(_fluxMap);
+    std::vector<dcel::Point> facePositions = _computeFacePositions();
+    std::vector<bool> isFaceInMap(_voronoi.faces.size(), false);
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        isFaceInMap[i] = _extents.containsPoint(facePositions[i]);
+    }
+
+    double inf = std::numeric_limits<double>::infinity();
+    std::vector<double> movementCosts(_voronoi.faces.size(), inf);
+    std::vector<int> parents(_voronoi.faces.size(), -1);
+    int rootid = city.faceid;
+    movementCosts[rootid] = 0;
+    std::queue<int> queue;
+    queue.push(rootid);
+
+    std::vector<dcel::HalfEdge> edges;
+    dcel::HalfEdge h;
+    dcel::Face f;
+    while (!queue.empty()) {
+        int fidx = queue.front();
+        queue.pop();
+
+        edges.clear();
+        _voronoi.getOuterComponents(_voronoi.faces[fidx], edges);
+        for (unsigned int hidx = 0; hidx < edges.size(); hidx++) {
+            int nidx = _voronoi.incidentFace(_voronoi.twin(edges[hidx])).id.ref;
+            if (!isFaceInMap[nidx] || movementCosts[nidx] != inf) {
+                continue;
+            }
+
+            double cost = 0.0;
+            double hdist = _getPointDistance(facePositions[nidx], facePositions[fidx]);
+            double hcost = isLand[nidx] ? _landDistanceCost : _seaDistanceCost;
+            cost += hcost * hdist;
+
+            if (isLand[nidx]) {
+                double udist = faceHeights[nidx] - faceHeights[fidx];
+                double ucost = udist > 0.0 ? _uphillCost : _downhillCost;
+                cost += (udist / hdist) * (udist / hdist) * ucost;
+                cost += sqrt(faceFlux[nidx]) * _fluxCost;
+            }
+
+            if ((_isLand(fidx) && !_isLand(nidx)) || 
+                (_isLand(nidx) && !_isLand(fidx))) {
+                cost += _landTransitionCost;
+            }
+
+            movementCosts[nidx] = movementCosts[fidx] + cost;
+            parents[nidx] = fidx;
+            queue.push(nidx);
+        }
+    }
+
+    city.movementCosts = movementCosts;
+}
+
+void gen::MapGenerator::_getTerritoryDrawData(
+                            std::vector<std::vector<double> > &data) {
+    std::vector<VertexList> borders;
+    _getTerritoryBorders(borders);
+
+    for (unsigned int i = 0; i < borders.size(); i++) {
+        borders[i] = _smoothPath(borders[i], _territoryBorderSmoothingFactor);
+    }
+
+    double invwidth = 1.0 / (_extents.maxx - _extents.minx);
+    double invheight = 1.0 / (_extents.maxy - _extents.miny);
+    for (unsigned int j = 0; j < borders.size(); j++) {
+        std::vector<double> drawPath;
+        drawPath.reserve(2*borders[j].size());
+        for (unsigned int i = 0; i < borders[j].size(); i++) {
+            dcel::Vertex v = borders[j][i];
+            double nx = (v.position.x - _extents.minx) * invwidth;
+            double ny = (v.position.y - _extents.miny) * invheight;
+            drawPath.push_back(nx);
+            drawPath.push_back(ny);
+        }
+        data.push_back(drawPath);
+    }
+}
+
+void gen::MapGenerator::_getTerritoryBorders(std::vector<VertexList> &borders) {
+    std::vector<int> faceTerritories(_voronoi.faces.size(), -1);
+    _getFaceTerritories(faceTerritories);
+    _getBorderPaths(faceTerritories, borders);
+}
+
+void gen::MapGenerator::_getFaceTerritories(std::vector<int> &faceTerritories) {
+    std::vector<bool> isLandFace;
+    _getLandFaces(isLandFace);
+
+    std::vector<dcel::Point> facePositions = _computeFacePositions();
+    std::vector<bool> isFaceInMap(_voronoi.faces.size(), false);
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        isFaceInMap[i] = _extents.containsPoint(facePositions[i]);
+    }
+
+    for (unsigned int i = 0; i < faceTerritories.size(); i++) {
+        if (!isFaceInMap[i]) {
+            continue;
+        }
+
+        if (!isLandFace[i]) {
+            continue;
+        }
+
+        double mincost = std::numeric_limits<double>::infinity();
+        int mincidx = -1;
+        for (unsigned int j = 0; j < _cities.size(); j++) {
+            if (_cities[j].movementCosts[i] < mincost) {
+                mincost = _cities[j].movementCosts[i];
+                mincidx = j;
+            }
+        }
+
+        faceTerritories[i] = mincidx;
+    }
+
+    _cleanupFaceTerritories(faceTerritories);
+}
+
+void gen::MapGenerator::_cleanupFaceTerritories(std::vector<int> &faceTerritories) {
+    for (int i = 0; i < _numTerritoryBorderSmoothingInterations; i++) {
+        _smoothTerritoryBoundaries(faceTerritories);
+    }
+
+    std::vector<std::vector<int> > connectedTerritories;
+    _getConnectedTerritories(faceTerritories, connectedTerritories);
+
+    std::vector<std::vector<int> > disjointTerritories;
+    _getDisjointTerritories(faceTerritories, 
+                            connectedTerritories, 
+                            disjointTerritories);
+    _claimDisjointTerritories(disjointTerritories, faceTerritories);
+}
+
+void gen::MapGenerator::_smoothTerritoryBoundaries(
+                            std::vector<int> &faceTerritories) {
+    std::vector<int> tempFaceTerritories = faceTerritories;
+    std::vector<int> neighbourCounts(_cities.size(), 0);
+    std::vector<dcel::HalfEdge> edges;
+    for (unsigned int fidx = 0; fidx < faceTerritories.size(); fidx++) {
+        if (faceTerritories[fidx] == -1) {
+            continue;
+        }
+
+        edges.clear();
+        _voronoi.getOuterComponents(_voronoi.faces[fidx], edges);
+        std::fill(neighbourCounts.begin(), neighbourCounts.end(), 0);
+        for (unsigned int hidx = 0; hidx < edges.size(); hidx++) {
+            int nidx = _voronoi.incidentFace(_voronoi.twin(edges[hidx])).id.ref;
+            if (faceTerritories[nidx] == -1) {
+                continue;
+            }
+
+            neighbourCounts[faceTerritories[nidx]]++;
+        }
+
+        int majorityTerritory = faceTerritories[fidx];
+        int majorityCount = neighbourCounts[faceTerritories[fidx]];
+        for (unsigned int cidx = 0; cidx < neighbourCounts.size(); cidx++) {
+            if (neighbourCounts[cidx] > majorityCount) {
+                majorityCount = neighbourCounts[cidx];
+                majorityTerritory = cidx;
+            }
+        }
+
+        tempFaceTerritories[fidx] = majorityTerritory;
+    }
+
+    for (unsigned int i = 0; i < faceTerritories.size(); i++) {
+        faceTerritories[i] = tempFaceTerritories[i];
+    }
+}
+
+void gen::MapGenerator::_getConnectedTerritories(
+                            std::vector<int> &faceTerritories,
+                            std::vector<std::vector<int> > &connected) {
+    std::vector<bool> isFaceProcessed(faceTerritories.size(), false);
+    for (unsigned int fidx = 0; fidx < faceTerritories.size(); fidx++) {
+        if (faceTerritories[fidx] == -1 || isFaceProcessed[fidx]) {
+            continue;
+        }
+
+        std::vector<int> faces;
+        _getConnectedTerritory(fidx, faceTerritories, isFaceProcessed, faces);
+        connected.push_back(faces);
+    }
+}
+
+void gen::MapGenerator::_getConnectedTerritory(int fidx, 
+                                               std::vector<int> &faceTerritories,
+                                               std::vector<bool> &isFaceProcessed,
+                                               std::vector<int> &connectedFaces) {
+    int territoryID = faceTerritories[fidx];
+    std::vector<int> queue;
+    queue.push_back(fidx);
+    isFaceProcessed[fidx] = true;
+
+    std::vector<dcel::HalfEdge> edges;
+    while (!queue.empty()) {
+        fidx = queue.back();
+        queue.pop_back();
+
+        edges.clear();
+        _voronoi.getOuterComponents(_voronoi.faces[fidx], edges);
+        for (unsigned int hidx = 0; hidx < edges.size(); hidx++) {
+            int nidx = _voronoi.incidentFace(_voronoi.twin(edges[hidx])).id.ref;
+            if (faceTerritories[nidx] == -1) {
+                continue;
+            }
+
+            if (!isFaceProcessed[nidx] && faceTerritories[nidx] == territoryID) {
+                queue.push_back(nidx);
+                isFaceProcessed[nidx] = true;
+            }
+        }
+
+        connectedFaces.push_back(fidx);
+    }
+}
+
+void gen::MapGenerator::_getDisjointTerritories(
+                            std::vector<int> &faceTerritories,
+                            std::vector<std::vector<int> > &connected, 
+                            std::vector<std::vector<int> > &disjoint) {
+    for (unsigned int i = 0; i < connected.size(); i++) {
+        int cityidx = faceTerritories[connected[i][0]];
+        int cityfaceidx = _cities[cityidx].faceid;
+
+        bool containsCity = std::find(connected[i].begin(), 
+                                      connected[i].end(), 
+                                      cityfaceidx) != connected[i].end();
+        if (!containsCity) {
+            disjoint.push_back(connected[i]);
+        }
+    }
+}
+
+void gen::MapGenerator::_claimDisjointTerritories(
+                            std::vector<std::vector<int> > &disjoint,
+                            std::vector<int> &faceTerritories) {
+    for (unsigned int i = 0; i < disjoint.size(); i++) {
+        int cidx = _getTerritoryOwner(disjoint[i], faceTerritories);
+        for (unsigned int j = 0; j < disjoint[i].size(); j++) {
+            faceTerritories[disjoint[i][j]] = cidx;
+        }
+    }
+}
+
+int gen::MapGenerator::_getTerritoryOwner(std::vector<int> &territory,
+                                          std::vector<int> &faceTerritories) {
+    std::vector<bool> isFaceProcessed(faceTerritories.size(), false);
+    for (unsigned int i = 0; i < territory.size(); i++) {
+        isFaceProcessed[territory[i]] = true;
+    }
+
+    std::vector<int> cityNeighbourCounts(_cities.size(), 0);
+    std::vector<dcel::HalfEdge> edges;
+    for (unsigned int i = 0; i < territory.size(); i++) {
+        int fidx = territory[i];
+
+        edges.clear();
+        _voronoi.getOuterComponents(_voronoi.faces[fidx], edges);
+        for (unsigned int hidx = 0; hidx < edges.size(); hidx++) {
+            int nidx = _voronoi.incidentFace(_voronoi.twin(edges[hidx])).id.ref;
+            if (faceTerritories[nidx] == -1 || isFaceProcessed[nidx]) {
+                continue;
+            }
+            cityNeighbourCounts[faceTerritories[nidx]]++;
+            isFaceProcessed[nidx] = true;
+        }
+    }
+
+    int majorityCount = 0;
+    int majorityCity = -1;
+    for (unsigned int i = 0; i < cityNeighbourCounts.size(); i++) {
+        if (cityNeighbourCounts[i] > majorityCount) {
+            majorityCount = cityNeighbourCounts[i];
+            majorityCity = i;
+        }
+    }
+
+    return majorityCity;
+}
+
+void gen::MapGenerator::_getBorderPaths(std::vector<int> &faceTerritories, 
+                                        std::vector<VertexList> &borders) {
+    std::vector<dcel::HalfEdge> borderEdges;
+    _getBorderEdges(faceTerritories, borderEdges);
+
+    std::vector<int> vertexBorderCounts(_vertexMap.vertices.size(), 0);
+    dcel::HalfEdge h;
+    dcel::Vertex v1, v2;
+    for (unsigned int i = 0; i < borderEdges.size(); i++) {
+        h = borderEdges[i];
+        v1 = _voronoi.origin(h);
+        v2 = _voronoi.origin(_voronoi.twin(h));
+        int vidx1 = _vertexMap.getVertexIndex(v1);
+        int vidx2 = _vertexMap.getVertexIndex(v2);
+
+        vertexBorderCounts[vidx1]++;
+        vertexBorderCounts[vidx2]++;
+    }
+
+    std::vector<bool> isEndVertex(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < vertexBorderCounts.size(); i++) {
+        if (vertexBorderCounts[i] == 1 || vertexBorderCounts[i] == 3) {
+            isEndVertex[i] = true;
+        }
+    }
+
+    std::vector<bool> isVertexProcessed(_vertexMap.vertices.size(), false);
+    for (unsigned int i = 0; i < isEndVertex.size(); i++) {
+        if (!isEndVertex[i]) {
+            continue;
+        }
+
+        for (unsigned int idx = 0; idx < 3; idx++) {
+            VertexList path;
+            _getBorderPath(i, faceTerritories, 
+                              isEndVertex, 
+                              isVertexProcessed,
+                              path);
+
+            if (path.size() > 0) {
+                borders.push_back(path);
+            }
+        }
+    }
+}
+
+void gen::MapGenerator::_getBorderEdges(std::vector<int> &faceTerritories, 
+                                        std::vector<dcel::HalfEdge> &borderEdges) {
+    std::vector<bool> isEdgeVisited(_voronoi.edges.size(), false);
+    dcel::HalfEdge h;
+    for (unsigned int i = 0; i < _voronoi.edges.size(); i++) {
+        h = _voronoi.edges[i];
+        if (!_isEdgeInMap(h) || isEdgeVisited[h.id.ref]) { 
+            continue; 
+        }
+
+        if (_isBorderEdge(h, faceTerritories)) { 
+            borderEdges.push_back(h);
+            isEdgeVisited[h.id.ref] = true;
+            isEdgeVisited[h.twin.ref] = true;
+        }
+    }
+}
+
+bool gen::MapGenerator::_isBorderEdge(dcel::HalfEdge &h, 
+                                      std::vector<int> &faceTerritories) {
+    dcel::Face f1 = _voronoi.incidentFace(h);
+    dcel::Face f2 = _voronoi.incidentFace(_voronoi.twin(h));
+    int city1 = faceTerritories[f1.id.ref];
+    int city2 = faceTerritories[f2.id.ref];
+    
+    if (city1 == -1 || city2 == -1) {
+        return false;
+    }
+
+    return city1 != city2;
+}
+
+bool gen::MapGenerator::_isBorderEdge(dcel::Vertex &v1, dcel::Vertex &v2, 
+                                      std::vector<int> &faceTerritories) {
+    std::vector<dcel::HalfEdge> edges;
+    edges.reserve(3);
+    _voronoi.getIncidentEdges(v1, edges);
+
+    dcel::HalfEdge h;
+    dcel::Vertex v;
+    for (unsigned int i = 0; i < edges.size(); i++) {
+        h = edges[i];
+        v = _voronoi.origin(_voronoi.twin(h));
+        if (v.id.ref == v2.id.ref) {
+            return _isBorderEdge(h, faceTerritories);
+        }
+    }
+
+    return false;
+}
+
+void gen::MapGenerator::_getBorderPath(int vidx, 
+                                       std::vector<int> &faceTerritories, 
+                                       std::vector<bool> &isEndVertex, 
+                                       std::vector<bool> &isVertexProcessed,
+                                       VertexList &path) {
+
+    dcel::Vertex v = _vertexMap.vertices[vidx];
+    dcel::Vertex lastVertex = v;
+
+    std::vector<dcel::Vertex> nbs;
+    for (;;) {
+        path.push_back(v);
+        isVertexProcessed[_vertexMap.getVertexIndex(v)] = true;
+        
+        nbs.clear();
+        _vertexMap.getNeighbours(v, nbs);
+        bool isFound = false;
+        for (unsigned int i = 0; i < nbs.size(); i++) {
+            dcel::Vertex n = nbs[i];
+            int nidx = _vertexMap.getVertexIndex(n);
+            if (n.id.ref != lastVertex.id.ref && 
+                            _isBorderEdge(v, n, faceTerritories) && 
+                            !isVertexProcessed[nidx]) {
+                lastVertex = v;
+                v = n;
+                isFound = true;
+                break;
+            }
+        }
+
+        if (!isFound) {
+            for (unsigned int i = 0; i < nbs.size(); i++) {
+                dcel::Vertex n = nbs[i];
+                int nidx = _vertexMap.getVertexIndex(n);
+                if (isEndVertex[nidx]) {
+                    path.push_back(n);
+                    isVertexProcessed[nidx] = true;
+                }
+            }
+
+            if (path.size() < 2) {
+                path.clear();
+            }
+            break;
+        }
+
+        int vidx = _vertexMap.getVertexIndex(v);
+        if (isEndVertex[vidx]) {
+            path.push_back(v);
+            isVertexProcessed[vidx] = true;
+            break;
+        }
+    }
 }

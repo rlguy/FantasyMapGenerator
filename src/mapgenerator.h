@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <vector>
+#include <queue>
 #include <fstream>
 #include <string>
 
@@ -38,6 +39,7 @@ public:
     void erode();
 
     void addCity();
+    void addTown();
 
     void outputVoronoiDiagram(std::string filename);
     void outputHeightMap(std::string filename);
@@ -51,8 +53,20 @@ private:
         dcel::Point p2;
     };
 
+    struct CityLocation {
+        dcel::Point position;
+        int faceid;
+    };
+
     struct City {
         dcel::Point position;
+        int faceid;
+        std::vector<double> movementCosts;
+    };
+
+    struct Town {
+        dcel::Point position;
+        int faceid;
     };
 
     jsoncons::json _getExtentsJSON();
@@ -110,10 +124,42 @@ private:
     void _calculateVertexNormal(int vidx, double *nx, double *ny, double *nz);
 
     void _getCityDrawData(std::vector<double> &data);
-    dcel::Point _getCityLocation();
+    void _getTownDrawData(std::vector<double> &data);
+    CityLocation _getCityLocation();
     void _getCityScores(NodeMap<double> &cityScores);
     double _getPointDistance(dcel::Point &p1, dcel::Point &p2);
     double _pointToEdgeDistance(dcel::Point p);
+    void _updateCityMovementCost(City &city);
+
+    void _getTerritoryDrawData(std::vector<std::vector<double> > &data);
+    void _getTerritoryBorders(std::vector<VertexList> &borders);
+    void _getFaceTerritories(std::vector<int> &faceTerritories);
+    void _cleanupFaceTerritories(std::vector<int> &faceTerritories);
+    void _smoothTerritoryBoundaries(std::vector<int> &faceTerritories);
+    void _getConnectedTerritories(std::vector<int> &faceTerritories,
+                                  std::vector<std::vector<int> > &connected);
+    void _getConnectedTerritory(int fidx, 
+                                std::vector<int> &faceTerritories,
+                                std::vector<bool> &isFaceProcessed,
+                                std::vector<int> &connectedFaces);
+    void _getDisjointTerritories(std::vector<int> &faceTerritories,
+                                 std::vector<std::vector<int> > &connected, 
+                                 std::vector<std::vector<int> > &disjoint);
+    void _claimDisjointTerritories(std::vector<std::vector<int> > &disjoint,
+                                   std::vector<int> &faceTerritories);
+    int _getTerritoryOwner(std::vector<int> &territory,
+                            std::vector<int> &faceTerritories);
+    void _getBorderPaths(std::vector<int> &faceTerritories, 
+                         std::vector<VertexList> &borders);
+    void _getBorderEdges(std::vector<int> &faceTerritories, 
+                         std::vector<dcel::HalfEdge> &borderEdges);
+    bool _isBorderEdge(dcel::HalfEdge &h, std::vector<int> &faceTerritories);
+    bool _isBorderEdge(dcel::Vertex &v1, dcel::Vertex &v2, 
+                       std::vector<int> &faceTerritories);
+    void _getBorderPath(int vidx, std::vector<int> &faceTerritories, 
+                                  std::vector<bool> &isEndVertex, 
+                                  std::vector<bool> &isVertexProcessed,
+                                  VertexList &path);
 
     Extents2d _extents;
     double _resolution;
@@ -131,7 +177,7 @@ private:
     double _erosionRiverFactor = 500.0;
     double _erosionCreepFactor = 500.0;
     double _defaultErodeAmount = 0.1;
-    double _riverFluxThreshold = 0.05;
+    double _riverFluxThreshold = 0.06;
     double _riverSmoothingFactor = 0.5;
     double _isolevel = 0.0;
     double _minIslandFaceThreshold = 35;
@@ -147,11 +193,23 @@ private:
     double _maxVerticalSlope = 0.05;
 
     double _fluxScoreBonus = 2.0;
-    double _nearEdgeScorePenalty = 0.1;
+    double _nearEdgeScorePenalty = 0.5;
     double _nearCityScorePenalty = 2.0;
+    double _nearTownScorePenalty = 1.5;
     double _maxPenaltyDistance = 4.0;
 
+    double _landDistanceCost = 0.2;
+    double _seaDistanceCost = 0.4;
+    double _uphillCost = 0.1;
+    double _downhillCost = 1.0;
+    double _fluxCost = 0.8;
+    double _landTransitionCost = 100.0;
+
+    int _numTerritoryBorderSmoothingInterations = 3;
+    double _territoryBorderSmoothingFactor = 0.5;
+
     std::vector<City> _cities;
+    std::vector<Town> _towns;
 };
 
 }
