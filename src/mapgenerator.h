@@ -15,6 +15,7 @@
 #include "vertexmap.h"
 #include "nodemap.h"
 #include "fontface.h"
+#include "spatialpointgrid.h"
 
 #include "jsoncons/json.hpp"
 
@@ -81,6 +82,7 @@ private:
         std::vector<Extents2d> charextents;
 
         double orientationScore;
+        double edgeScore;
         double markerScore;
         double contourScore;
         double riverScore;
@@ -197,7 +199,7 @@ private:
                                   std::vector<bool> &isVertexProcessed,
                                   VertexList &path);
 
-    void _getLabelData();
+    void _getLabelDrawData();
     void _initializeLabels(std::vector<Label> &labels);
     void _initializeCityLabel(City &city, std::string &name, Label &label);
     void _initializeTownLabel(Town &town, std::string &name, Label &label);
@@ -211,6 +213,20 @@ private:
     dcel::Point _normalizeMapCoordinate(dcel::Point &p);
     dcel::Point _normalizeMapCoordinate(double x, double y);
     std::vector<LabelOffset> _getLabelOffsets(Label label, double radius);
+    void _initializeLabelScores(std::vector<Label> &labels);
+    void _initializeLabelEdgeScores(std::vector<Label> &labels);
+    double _getEdgeScore(Extents2d extents);
+    void _initializeLabelMarkerScores(std::vector<Label> &labels);
+    double _getMarkerScore(Extents2d extents);
+    void _initializeLabelContourScores(std::vector<Label> &labels);
+    void _getDataPoints(std::vector<std::vector<double> > &data,
+                        std::vector<dcel::Point> &points);
+    void _computeContourScores(Label &label, SpatialPointGrid &grid);
+    int _getLabelPointCount(LabelCandidate &c, SpatialPointGrid &grid);
+    void _initializeLabelRiverScores(std::vector<Label> &labels);
+    void _computeRiverScores(Label &label, SpatialPointGrid &grid);
+    void _initializeLabelBorderScores(std::vector<Label> &labels);
+    void _computeBorderScores(Label &label, SpatialPointGrid &grid);
 
     Extents2d _extents;
     double _resolution;
@@ -262,6 +278,10 @@ private:
     int _numTerritoryBorderSmoothingInterations = 3;
     double _territoryBorderSmoothingFactor = 0.5;
 
+    std::vector<std::vector<double> > _contourData;
+    std::vector<std::vector<double> > _riverData;
+    std::vector<std::vector<double> > _borderData;
+
     std::vector<City> _cities;
     std::vector<Town> _towns;
 
@@ -272,6 +292,15 @@ private:
     std::string _townLabelFontFace;
     int _cityLabelFontSize = 35;
     int _townLabelFontSize = 25;
+    double _spatialGridResolutionFactor = 5.0;
+    double _edgeScorePenalty = 4.0;
+    double _markerScorePenalty = 4.0;
+    double _minContourScorePenalty = 0.5;
+    double _maxContourScorePenalty = 1.5;
+    double _minRiverScorePenalty = 0.7;
+    double _maxRiverScorePenalty = 2.0;
+    double _minBorderScorePenalty = 0.8;
+    double _maxBorderScorePenalty = 2.0;
 };
 
 }

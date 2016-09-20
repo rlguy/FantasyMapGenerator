@@ -321,9 +321,11 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
 
     std::vector<std::vector<double> > contourData;
     _getContourDrawData(contourData);
+    _contourData = contourData;
 
     std::vector<std::vector<double> > riverData;
     _getRiverDrawData(riverData);
+    _riverData = riverData;
 
     std::vector<double> slopeData;
     _getSlopeDrawData(slopeData);
@@ -336,8 +338,9 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
 
     std::vector<std::vector<double> > territoryData;
     _getTerritoryDrawData(territoryData);
+    _borderData = territoryData;
 
-    _getLabelData();
+    _getLabelDrawData();
 
     double width = _extents.maxx - _extents.minx;
     double height = _extents.maxy - _extents.miny;
@@ -1777,19 +1780,28 @@ void gen::MapGenerator::_getBorderPath(int vidx,
     }
 }
 
-void gen::MapGenerator::_getLabelData() {
+void gen::MapGenerator::_getLabelDrawData() {
     std::vector<Label> labels;
     _initializeLabels(labels);
 
     std::vector<jsoncons::json> jsondata;
     for (unsigned int i = 0; i < labels.size(); i++) {
-        int r = (int)((double)rand() / ((double)RAND_MAX / (19)));
-
+        double minidx = 0;
+        double minscore = 10000;
         for (unsigned int j = 0; j < labels[i].candidates.size(); j++) {
-            if ((int)j == r) { 
-                jsondata.push_back(_getLabelJSON(labels[i].candidates[j]));
+            double score = labels[i].candidates[j].markerScore;
+            score += labels[i].candidates[j].edgeScore;
+            score += labels[i].candidates[j].contourScore;
+            score += labels[i].candidates[j].riverScore;
+            score += labels[i].candidates[j].borderScore;
+            score += labels[i].candidates[j].orientationScore;
+            if (score < minscore) {
+                minscore = score;
+                minidx = j;
             }
         }
+
+        jsondata.push_back(_getLabelJSON(labels[i].candidates[minidx]));
     }
 
     jsoncons::json labeldata = jsondata;
@@ -1817,6 +1829,8 @@ void gen::MapGenerator::_initializeLabels(std::vector<Label> &labels) {
         names.pop_back();
         labels.push_back(townLabel);
     }
+
+    _initializeLabelScores(labels);
 }
 
 void gen::MapGenerator::_initializeCityLabel(City &city, std::string &name, 
@@ -2032,4 +2046,207 @@ gen::MapGenerator::_getLabelOffsets(Label label, double markerRadius) {
     }
 
     return labelOffsets;
+}
+
+void gen::MapGenerator::_initializeLabelScores(std::vector<Label> &labels) {
+    _initializeLabelEdgeScores(labels);
+    _initializeLabelMarkerScores(labels);
+    _initializeLabelContourScores(labels);
+    _initializeLabelRiverScores(labels);
+    _initializeLabelBorderScores(labels);
+}
+
+void gen::MapGenerator::_initializeLabelEdgeScores(std::vector<Label> &labels) {
+    Extents2d extents;
+    for (unsigned int j = 0; j < labels.size(); j++) {
+        for (unsigned int i = 0; i < labels[j].candidates.size(); i++) {
+            extents = labels[j].candidates[i].extents;
+            labels[j].candidates[i].edgeScore = _getEdgeScore(extents);
+        }
+    }
+}
+
+double gen::MapGenerator::_getEdgeScore(Extents2d extents) {
+    dcel::Point minp(extents.minx, extents.miny);
+    if (!_extents.containsPoint(minp)) {
+        return _edgeScorePenalty;
+    }
+
+    dcel::Point maxp(extents.maxx, extents.maxy);
+    if (!_extents.containsPoint(maxp)) {
+        return _edgeScorePenalty;
+    }
+
+    return 0.0;
+}
+
+void gen::MapGenerator::_initializeLabelMarkerScores(std::vector<Label> &labels) {
+    Extents2d extents;
+    for (unsigned int j = 0; j < labels.size(); j++) {
+        for (unsigned int i = 0; i < labels[j].candidates.size(); i++) {
+            extents = labels[j].candidates[i].extents;
+            labels[j].candidates[i].markerScore = _getMarkerScore(extents);
+        }
+    }
+}
+
+double gen::MapGenerator::_getMarkerScore(Extents2d extents) {
+    int count = 0;
+    double mapheight = _extents.maxy - _extents.miny;
+    double r = (_cityMarkerRadius / (double)_imgheight) * mapheight;
+    for (unsigned int i = 0; i < _cities.size(); i++) {
+        dcel::Point p = _cities[i].position;
+        dcel::Point minp(p.x - r, p.y - r);
+        dcel::Point maxp(p.x + r, p.y + r);
+
+        if (extents.containsPoint(minp) ||
+            extents.containsPoint(maxp)) {
+            count++;
+        }
+    }
+
+    r = (_townMarkerRadius / (double)_imgheight) * mapheight;
+    for (unsigned int i = 0; i < _towns.size(); i++) {
+        dcel::Point p = _cities[i].position;
+        dcel::Point minp(p.x - r, p.y - r);
+        dcel::Point maxp(p.x + r, p.y + r);
+
+        if (extents.containsPoint(minp) ||
+            extents.containsPoint(maxp)) {
+            count++;
+        }
+    }
+
+    return count * _markerScorePenalty;
+}
+
+void gen::MapGenerator::_initializeLabelContourScores(std::vector<Label> &labels) {
+    std::vector<dcel::Point> contourPoints;
+    _getDataPoints(_contourData, contourPoints);
+
+    double dx = _spatialGridResolutionFactor*_resolution;
+    SpatialPointGrid pointGrid(contourPoints, dx);
+    for (unsigned int i = 0; i < labels.size(); i++) {
+        _computeContourScores(labels[i], pointGrid);
+    }
+}
+
+void gen::MapGenerator::_getDataPoints(std::vector<std::vector<double> > &data,
+                                       std::vector<dcel::Point> &points) {
+    double width = _extents.maxx - _extents.minx;
+    double height = _extents.maxy - _extents.miny;
+
+    double eps = 1e-9;
+    for (unsigned int j = 0; j < data.size(); j++) {
+        bool isLoop = fabs(data[j][0] - data[j][data[j].size() - 2]) < eps &&
+                      fabs(data[j][1] - data[j][data[j].size() - 1]) < eps;
+
+        for (unsigned int i = 0; i < data[j].size(); i += 2) {
+            if (i != data[j].size() - 2 || !isLoop) {
+                double x = _extents.minx + data[j][i] * width;
+                double y = _extents.miny + data[j][i + 1] * height;
+                points.push_back(dcel::Point(x, y));
+            }
+        }
+    }
+}
+
+void gen::MapGenerator::_computeContourScores(Label &label, 
+                                              SpatialPointGrid &grid) {
+    int mincount = std::numeric_limits<int>::max();
+    int maxcount = 0;
+    std::vector<int> counts(label.candidates.size(), 0);
+    for (unsigned int i = 0; i < label.candidates.size(); i++) {
+        int n = _getLabelPointCount(label.candidates[i], grid);
+        counts[i] = n;
+        if (n > 0 && n < mincount) { mincount = n; }
+        if (n > 0 && n > maxcount) { maxcount = n; }
+    }
+
+    for (unsigned int i = 0; i < label.candidates.size(); i++) {
+        if (counts[i] == 0) {
+            label.candidates[i].contourScore = 0.0;
+        } else {
+            double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
+            double scorediff = _maxContourScorePenalty - _minContourScorePenalty;
+            label.candidates[i].contourScore = _minContourScorePenalty + f * scorediff;
+        }
+    }
+}
+
+int gen::MapGenerator::_getLabelPointCount(LabelCandidate &c, 
+                                            SpatialPointGrid &grid) {
+    int count = 0;
+    for (unsigned int i = 0; i < c.charextents.size(); i++) {
+        count += grid.getPointCount(c.charextents[i]);
+    }
+    return count;
+}
+
+void gen::MapGenerator::_initializeLabelRiverScores(std::vector<Label> &labels) {
+    std::vector<dcel::Point> riverPoints;
+    _getDataPoints(_riverData, riverPoints);
+
+    double dx = _spatialGridResolutionFactor*_resolution;
+    SpatialPointGrid pointGrid(riverPoints, dx);
+    for (unsigned int i = 0; i < labels.size(); i++) {
+        _computeRiverScores(labels[i], pointGrid);
+    }
+}
+
+void gen::MapGenerator::_computeRiverScores(Label &label, 
+                                            SpatialPointGrid &grid) {
+    int mincount = std::numeric_limits<int>::max();
+    int maxcount = 0;
+    std::vector<int> counts(label.candidates.size(), 0);
+    for (unsigned int i = 0; i < label.candidates.size(); i++) {
+        int n = _getLabelPointCount(label.candidates[i], grid);
+        counts[i] = n;
+        if (n > 0 && n < mincount) { mincount = n; }
+        if (n > 0 && n > maxcount) { maxcount = n; }
+    }
+
+    for (unsigned int i = 0; i < label.candidates.size(); i++) {
+        if (counts[i] == 0) {
+            label.candidates[i].riverScore = 0.0;
+        } else {
+            double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
+            double scorediff = _maxRiverScorePenalty - _minRiverScorePenalty;
+            label.candidates[i].riverScore = _minRiverScorePenalty + f * scorediff;
+        }
+    }
+}
+
+void gen::MapGenerator::_initializeLabelBorderScores(std::vector<Label> &labels) {
+    std::vector<dcel::Point> borderPoints;
+    _getDataPoints(_borderData, borderPoints);
+
+    double dx = _spatialGridResolutionFactor*_resolution;
+    SpatialPointGrid pointGrid(borderPoints, dx);
+    for (unsigned int i = 0; i < labels.size(); i++) {
+        _computeBorderScores(labels[i], pointGrid);
+    }
+}
+
+void gen::MapGenerator::_computeBorderScores(Label &label, 
+                                            SpatialPointGrid &grid) {
+    int mincount = std::numeric_limits<int>::max();
+    int maxcount = 0;
+    std::vector<int> counts(label.candidates.size(), 0);
+    for (unsigned int i = 0; i < label.candidates.size(); i++) {
+        int n = _getLabelPointCount(label.candidates[i], grid);
+        counts[i] = n;
+        if (n > 0 && n < mincount) { mincount = n; }
+        if (n > 0 && n > maxcount) { maxcount = n; }
+    }
+
+    for (unsigned int i = 0; i < label.candidates.size(); i++) {
+        if (counts[i] == 0) {
+            label.candidates[i].borderScore = 0.0;
+        } else {
+            double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
+            double scorediff = _maxBorderScorePenalty - _minBorderScorePenalty;
+            label.candidates[i].borderScore = _minBorderScorePenalty + f * scorediff;
+        }
+    }
 }
