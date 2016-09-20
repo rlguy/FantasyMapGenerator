@@ -14,6 +14,7 @@
 #include "voronoi.h"
 #include "vertexmap.h"
 #include "nodemap.h"
+#include "fontface.h"
 
 #include "jsoncons/json.hpp"
 
@@ -23,6 +24,8 @@ class MapGenerator {
 
 public:
     MapGenerator();
+    MapGenerator(Extents2d extents, double resolution, 
+                 int imgwidth, int imgheight);
     MapGenerator(Extents2d extents, double resolution);
 
     void initialize();
@@ -67,6 +70,39 @@ private:
     struct Town {
         dcel::Point position;
         int faceid;
+    };
+
+    struct LabelCandidate {
+        std::string text;
+        std::string fontface;
+        int fontsize;
+        dcel::Point position;
+        Extents2d extents;
+        std::vector<Extents2d> charextents;
+
+        double orientationScore;
+        double markerScore;
+        double contourScore;
+        double riverScore;
+        double borderScore;
+    };
+
+    struct Label {
+        std::string text;
+        std::string fontface;
+        int fontsize;
+        dcel::Point position;
+
+        std::vector<LabelCandidate> candidates;
+        int candidateIdx = -1;
+    };
+
+    struct LabelOffset {
+        dcel::Point offset;
+        double score = 0.0;
+
+        LabelOffset() {}
+        LabelOffset(dcel::Point p, double s) : offset(p), score(s) {}
     };
 
     jsoncons::json _getExtentsJSON();
@@ -161,8 +197,26 @@ private:
                                   std::vector<bool> &isVertexProcessed,
                                   VertexList &path);
 
+    void _getLabelData();
+    void _initializeLabels(std::vector<Label> &labels);
+    void _initializeCityLabel(City &city, std::string &name, Label &label);
+    void _initializeTownLabel(Town &town, std::string &name, Label &label);
+    std::vector<std::string> _getLabelNames(int num);
+    std::vector<LabelCandidate> _getLabelCandidates(Label label, double markerRadius);
+    dcel::Point _getPixelCoordinates(dcel::Point &p);
+    dcel::Point _getMapCoordinates(dcel::Point &p);
+    Extents2d _getTextExtents(std::string text, dcel::Point pos);
+    std::vector<Extents2d> _getCharacterExtents(std::string text, dcel::Point pos);
+    jsoncons::json _getLabelJSON(LabelCandidate &label);
+    dcel::Point _normalizeMapCoordinate(dcel::Point &p);
+    dcel::Point _normalizeMapCoordinate(double x, double y);
+    std::vector<LabelOffset> _getLabelOffsets(Label label, double radius);
+
     Extents2d _extents;
     double _resolution;
+    int _imgwidth;
+    int _imgheight;
+    int _defaultImageHeight = 1080;
 
     dcel::DCEL _voronoi;
     VertexMap _vertexMap;
@@ -171,7 +225,7 @@ private:
     NodeMap<int> _flowMap;
     bool _isInitialized = false;
 
-    double _samplePadFactor = 2.5;
+    double _samplePadFactor = 3.5;
     double _fluxCapPercentile = 0.995;
     double _maxErosionRate = 50.0;
     double _erosionRiverFactor = 500.0;
@@ -210,6 +264,14 @@ private:
 
     std::vector<City> _cities;
     std::vector<Town> _towns;
+
+    FontFace _fontData;
+    double _cityMarkerRadius = 10.0;    // in pixels
+    double _townMarkerRadius = 5.0;
+    std::string _cityLabelFontFace;
+    std::string _townLabelFontFace;
+    int _cityLabelFontSize = 35;
+    int _townLabelFontSize = 25;
 };
 
 }

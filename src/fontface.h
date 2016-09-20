@@ -37,6 +37,7 @@ public:
     bool setFontSize(int size);
     bool setFontSize();
     TextExtents getTextExtents(std::string str);
+    std::vector<TextExtents> getCharacterExtents(std::string str);
 
 private:
     std::string _intToString(int number);

@@ -8,8 +8,26 @@ gen::MapGenerator::MapGenerator() {
     _resolution = defaultResolution;
 }
 
+gen::MapGenerator::MapGenerator(Extents2d extents, double resolution, 
+                                int imgwidth, int imgheight) : 
+                                _extents(extents), _resolution(resolution),
+                                _imgwidth(imgwidth), _imgheight(imgheight),
+                                _fontData("font_data/font_data.json"),
+                                _cityLabelFontFace("Times New Roman"),
+                                _townLabelFontFace("Times New Roman") {
+}
+
 gen::MapGenerator::MapGenerator(Extents2d extents, double resolution) :
-                                _extents(extents), _resolution(resolution) {}
+                                _extents(extents), _resolution(resolution),
+                                _fontData("font_data/font_data.json"),
+                                _cityLabelFontFace("Times New Roman"),
+                                _townLabelFontFace("Times New Roman") {
+    double width = _extents.maxx - _extents.minx;
+    double height = _extents.maxy - _extents.miny;
+    double aspectratio = width / height;
+    _imgwidth = (int)(aspectratio*_defaultImageHeight + 0.5);
+    _imgheight = _defaultImageHeight;
+}
 
 void gen::MapGenerator::initialize() {
     std::cout << "Generating samples within " << 
@@ -318,6 +336,8 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
 
     std::vector<std::vector<double> > territoryData;
     _getTerritoryDrawData(territoryData);
+
+    _getLabelData();
 
     double width = _extents.maxx - _extents.minx;
     double height = _extents.maxy - _extents.miny;
@@ -1755,4 +1775,261 @@ void gen::MapGenerator::_getBorderPath(int vidx,
             break;
         }
     }
+}
+
+void gen::MapGenerator::_getLabelData() {
+    std::vector<Label> labels;
+    _initializeLabels(labels);
+
+    std::vector<jsoncons::json> jsondata;
+    for (unsigned int i = 0; i < labels.size(); i++) {
+        int r = (int)((double)rand() / ((double)RAND_MAX / (19)));
+
+        for (unsigned int j = 0; j < labels[i].candidates.size(); j++) {
+            if ((int)j == r) { 
+                jsondata.push_back(_getLabelJSON(labels[i].candidates[j]));
+            }
+        }
+    }
+
+    jsoncons::json labeldata = jsondata;
+    std::ofstream file("labeldata.json");
+    file << labeldata;
+    file.close();
+}
+
+void gen::MapGenerator::_initializeLabels(std::vector<Label> &labels) {
+    int numLabels = _cities.size() + _towns.size();
+    std::vector<std::string> names = _getLabelNames(numLabels);
+
+    _fontData.setFontFace(_cityLabelFontFace, _cityLabelFontSize);
+    for (unsigned int i = 0; i < _cities.size(); i++) {
+        Label cityLabel;
+        _initializeCityLabel(_cities[i], names.back(), cityLabel);
+        names.pop_back();
+        labels.push_back(cityLabel);
+    }
+
+    _fontData.setFontFace(_townLabelFontFace, _townLabelFontSize);
+    for (unsigned int i = 0; i < _towns.size(); i++) {
+        Label townLabel;
+        _initializeTownLabel(_towns[i], names.back(), townLabel);
+        names.pop_back();
+        labels.push_back(townLabel);
+    }
+}
+
+void gen::MapGenerator::_initializeCityLabel(City &city, std::string &name, 
+                                             Label &label) {
+    label.text = name;
+    label.fontface = _fontData.getFontFace();
+    label.fontsize = _fontData.getFontSize();
+    label.position = city.position;
+
+    double mapheight = _extents.maxy - _extents.miny;
+    double radius = (_cityMarkerRadius / (double)_imgheight) * mapheight;
+    label.candidates = _getLabelCandidates(label, radius);
+}
+
+void gen::MapGenerator::_initializeTownLabel(Town &town, std::string &name, 
+                                             Label &label) {
+    label.text = name;
+    label.fontface = _fontData.getFontFace();
+    label.fontsize = _fontData.getFontSize();
+    label.position = town.position;
+
+    double mapheight = _extents.maxy - _extents.miny;
+    double radius = (_townMarkerRadius / (double)_imgheight) * mapheight;
+    label.candidates = _getLabelCandidates(label, radius);
+}
+
+std::vector<std::string> gen::MapGenerator::_getLabelNames(int num) {
+    std::ifstream file("city_data/countrycities.json");
+    std::string jsonstr((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    jsoncons::json json = jsoncons::json::parse(jsonstr);
+
+    std::vector<std::string> countries;
+    for (const auto& member : json.members()) {
+        countries.push_back(member.name());
+    }
+
+    std::vector<std::string> cities;
+    while ((int)cities.size() < num) {
+        int randidx = rand() % (int)countries.size();
+        std::string country = countries[randidx];
+        for (const auto& member : json[country].elements()) {
+            cities.push_back(member.as<std::string>());
+        }
+    }
+
+    std::string temp;
+    for (int i = cities.size() - 2; i >= 0; i--) {
+        int j = (rand() % (int)(i - 0 + 1));
+        temp = cities[i];
+        cities[i] = cities[j];
+        cities[j] = temp;
+    }
+
+    std::vector<std::string> labelnames;
+    labelnames.insert(labelnames.end(), cities.begin(), cities.begin() + num);
+
+    return labelnames;
+}
+
+std::vector<gen::MapGenerator::LabelCandidate> 
+gen::MapGenerator::_getLabelCandidates(Label label, double markerRadius) {
+    std::vector<LabelOffset> offsets = _getLabelOffsets(label, markerRadius);
+    std::vector<LabelCandidate> candidates;
+    for (unsigned int i = 0; i < offsets.size(); i++) {
+        LabelCandidate c;
+        c.text = label.text;
+        c.fontface = label.fontface;
+        c.fontsize = label.fontsize;
+        c.position = dcel::Point(label.position.x + offsets[i].offset.x, 
+                                 label.position.y + offsets[i].offset.y);
+        c.extents = _getTextExtents(c.text, c.position);
+        c.charextents = _getCharacterExtents(c.text, c.position);
+        c.orientationScore = offsets[i].score;
+        candidates.push_back(c);
+    }
+
+    return candidates;
+}
+
+dcel::Point gen::MapGenerator::_getPixelCoordinates(dcel::Point &p) {
+    double nx = (p.x - _extents.minx) / (_extents.maxx - _extents.minx);
+    double ny = (p.y - _extents.miny) / (_extents.maxy - _extents.miny);
+    return dcel::Point((double)_imgwidth * nx, 
+                       (double)_imgheight * (1.0 - ny));
+}
+
+dcel::Point gen::MapGenerator::_getMapCoordinates(dcel::Point &p) {
+    double nx = p.x / (double)_imgwidth;
+    double ny = 1.0 - (p.y / (double)_imgheight);
+    return dcel::Point(_extents.minx + nx * (_extents.maxx - _extents.minx),
+                       _extents.miny + ny * (_extents.maxy - _extents.miny));
+}
+
+Extents2d gen::MapGenerator::_getTextExtents(std::string text, dcel::Point pos) {
+    TextExtents extents = _fontData.getTextExtents(text); 
+    dcel::Point px = _getPixelCoordinates(pos);
+
+    dcel::Point minp(px.x + extents.offx, px.y + extents.offy);
+    dcel::Point maxp(minp.x + extents.width, minp.y + extents.height);
+    minp = _getMapCoordinates(minp);
+    maxp = _getMapCoordinates(maxp);
+
+    return Extents2d(minp.x , maxp.y, maxp.x, minp.y);
+}
+
+std::vector<Extents2d> gen::MapGenerator::_getCharacterExtents(std::string text, 
+                                                               dcel::Point pos) {
+    std::vector<TextExtents> extents = _fontData.getCharacterExtents(text);
+    dcel::Point px = _getPixelCoordinates(pos);
+
+    std::vector<Extents2d> charextents;
+    charextents.reserve(extents.size());
+    for (unsigned int i = 0; i < extents.size(); i++) {
+        dcel::Point minp(px.x + extents[i].offx, px.y + extents[i].offy);
+        dcel::Point maxp(minp.x + extents[i].width, minp.y + extents[i].height);
+        minp = _getMapCoordinates(minp);
+        maxp = _getMapCoordinates(maxp);
+
+        charextents.push_back(Extents2d(minp.x , maxp.y, maxp.x, minp.y));
+    } 
+
+    return charextents;
+}
+
+jsoncons::json gen::MapGenerator::_getLabelJSON(LabelCandidate &label) {
+    dcel::Point npos = _normalizeMapCoordinate(label.position);
+    dcel::Point nmin = _normalizeMapCoordinate(label.extents.minx, 
+                                               label.extents.miny);
+    dcel::Point nmax = _normalizeMapCoordinate(label.extents.maxx, 
+                                               label.extents.maxy);
+
+    jsoncons::json json;
+    json["text"] = label.text;
+    json["fontface"] = label.fontface;
+    json["fontsize"] = label.fontsize;
+    json["position"] = std::vector<double>({npos.x, npos.y});
+    json["extents"] = std::vector<double>({nmin.x, nmin.y, nmax.x, nmax.y});
+
+    std::vector<double> charextents;
+    for (unsigned int i = 0; i < label.charextents.size(); i++) {
+        Extents2d extents = label.charextents[i];
+        nmin = _normalizeMapCoordinate(extents.minx, extents.miny);
+        nmax = _normalizeMapCoordinate(extents.maxx, extents.maxy);
+        charextents.push_back(nmin.x);
+        charextents.push_back(nmin.y);
+        charextents.push_back(nmax.x);
+        charextents.push_back(nmax.y);
+    }
+    json["charextents"] = charextents;
+
+    return json;
+}
+
+dcel::Point gen::MapGenerator::_normalizeMapCoordinate(double x, double y) {
+    return dcel::Point((x - _extents.minx) / (_extents.maxx - _extents.minx),
+                       (y - _extents.miny) / (_extents.maxy - _extents.miny));
+}
+
+dcel::Point gen::MapGenerator::_normalizeMapCoordinate(dcel::Point &p) {
+    return _normalizeMapCoordinate(p.x, p.y);
+}
+
+std::vector<gen::MapGenerator::LabelOffset> 
+gen::MapGenerator::_getLabelOffsets(Label label, double markerRadius) {
+    Extents2d extents = _getTextExtents(label.text, label.position);
+    std::vector<Extents2d> charextents = _getCharacterExtents(label.text,
+                                                              label.position);
+
+    double r = markerRadius;
+    double textwidth = extents.maxx - extents.minx;
+    double textheight = extents.maxy - extents.miny;
+    double textheightstart = charextents[0].maxy - charextents[0].miny;
+    int endidx = charextents.size() - 1;
+    double textheightend = charextents[endidx].maxy - charextents[endidx].miny;
+    double starty = charextents[0].miny - extents.miny;
+    double endy = charextents[endidx].miny - extents.miny;
+
+    std::vector<dcel::Point> offsets({
+        // Labels to the right of marker
+        dcel::Point(1.0 * r, -starty + 1.2 * r),
+        dcel::Point(1.2 * r, -starty + 0.9 * r),
+        dcel::Point(1.4 * r, -starty + 0.0 * r),
+        dcel::Point(1.4 * r, -starty + 0.5 * r - 0.5 * textheightstart),
+        dcel::Point(1.4 * r, -starty - 0.5 * r - 0.5 * textheightstart),
+        dcel::Point(1.4 * r, -starty + 0.0 * r - textheightstart),
+        dcel::Point(1.0 * r, -starty - 1.0 * r - textheightstart),
+
+        // Labels to the left of marker
+        dcel::Point(-1.2 * r - textwidth, -endy + 1.0 * r),
+        dcel::Point(-1.3 * r - textwidth, -endy + 0.5 * r),
+        dcel::Point(-1.4 * r - textwidth, -endy + 0.0 * r),
+        dcel::Point(-1.4 * r - textwidth, -endy + 0.5 * r - 0.5 * textheightend),
+        dcel::Point(-1.3 * r - textwidth, -endy - 0.5 * r - 0.5 * textheightend),
+        dcel::Point(-1.3 * r - textwidth, -endy + 0.0 * r - textheightend),
+
+        // Labels above/below marker
+        dcel::Point(-(1.0 / 3.0) * textwidth, 1.4 * r),
+        dcel::Point(-(1.0 / 3.0) * textwidth, -1.4 * r - textheight),
+        dcel::Point(-0.5 * textwidth, 1.4 * r),
+        dcel::Point(-0.5 * textwidth, -1.4 * r - textheight),
+        dcel::Point(-(2.0 / 3.0) * textwidth, -1.4 * r - textheight),
+        dcel::Point(-(2.0 / 3.0) * textwidth, -1.4 * r - textheight)
+    });
+
+    std::vector<double> scores({0.41, 0.33, 0.00, 0.04, 0.30, 0.12, 0.59, 0.63, 
+                                0.44, 0.07, 0.10, 0.02, 0.37, 0.70, 0.74, 0.67, 
+                                0.89, 0.74, 1.0});
+
+    std::vector<LabelOffset> labelOffsets;
+    for (unsigned int i = 0; i < offsets.size(); i++) {
+        labelOffsets.push_back(LabelOffset(offsets[i], scores[i]));
+    }
+
+    return labelOffsets;
 }

@@ -16,3 +16,4 @@ add_library(objects OBJECT ${SOURCES})
 add_executable(map_generation $<TARGET_OBJECTS:objects>)
 
 file(COPY "src/font_data" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "src/city_data" DESTINATION ${CMAKE_BINARY_DIR})

@@ -166,6 +166,23 @@ gen::TextExtents gen::FontFace::getTextExtents(std::string str) {
 	return extents;
 }
 
+std::vector<gen::TextExtents> gen::FontFace::getCharacterExtents(std::string str) {
+	std::vector<TextExtents> extents;
+	extents.reserve(str.size());
+	TextExtents charExtents;
+	double x = 0;
+	for (unsigned int i = 0; i < str.size(); i++) {
+		charExtents = _getCharExtents(str[i]);
+
+		charExtents.offx += x;
+		x += charExtents.dx;
+
+		extents.push_back(charExtents);
+	}
+
+	return extents;
+}
+
 gen::TextExtents gen::FontFace::_getCharExtents(char c) {
 	std::string key(1, c);
 	jsoncons::json chardata = _jsonData[_fontFace][_fontSize][key];
