@@ -80,6 +80,7 @@ private:
         dcel::Point position;
         Extents2d extents;
         std::vector<Extents2d> charextents;
+        int cityid;
 
         double orientationScore;
         double edgeScore;
@@ -87,6 +88,7 @@ private:
         double contourScore;
         double riverScore;
         double borderScore;
+        double baseScore;
     };
 
     struct Label {
@@ -201,10 +203,20 @@ private:
 
     void _getLabelDrawData();
     void _initializeLabels(std::vector<Label> &labels);
+    void _initializeMarkerLabels(std::vector<std::string> names, 
+                                 std::vector<Label> &labels);
+    void _initializeAreaLabels(std::vector<std::string> names, 
+                               std::vector<Label> &labels);
     void _initializeCityLabel(City &city, std::string &name, Label &label);
     void _initializeTownLabel(Town &town, std::string &name, Label &label);
+    void _initializeAreaLabel(City &city, std::string &name, Label &label);
     std::vector<std::string> _getLabelNames(int num);
-    std::vector<LabelCandidate> _getLabelCandidates(Label label, double markerRadius);
+    std::vector<LabelCandidate> _getMarkerLabelCandidates(Label label, 
+                                                          double markerRadius);
+    std::vector<LabelCandidate> _getAreaLabelCandidates(Label label,
+                                                        City &city);
+    void _getAreaLabelSamples(City &city, std::vector<dcel::Point> &samples);
+    void _shuffleVector(std::vector<int> &vector);
     dcel::Point _getPixelCoordinates(dcel::Point &p);
     dcel::Point _getMapCoordinates(dcel::Point &p);
     Extents2d _getTextExtents(std::string text, dcel::Point pos);
@@ -213,11 +225,15 @@ private:
     dcel::Point _normalizeMapCoordinate(dcel::Point &p);
     dcel::Point _normalizeMapCoordinate(double x, double y);
     std::vector<LabelOffset> _getLabelOffsets(Label label, double radius);
-    void _initializeLabelScores(std::vector<Label> &labels);
+    void _initializeMarkerLabelScores(std::vector<Label> &labels);
+    void _initializeAreaLabelScores(std::vector<Label> &labels);
     void _initializeLabelEdgeScores(std::vector<Label> &labels);
+    static bool _sortAreaLabelsByScore(LabelCandidate label1, LabelCandidate label2);
     double _getEdgeScore(Extents2d extents);
     void _initializeLabelMarkerScores(std::vector<Label> &labels);
-    double _getMarkerScore(Extents2d extents);
+    double _computeLabelMarkerScore(Extents2d extents);
+    void _initializeAreaLabelMarkerScores(std::vector<Label> &labels);
+    double _computeAreaLabelMarkerScore(Extents2d extents);
     void _initializeLabelContourScores(std::vector<Label> &labels);
     void _getDataPoints(std::vector<std::vector<double> > &data,
                         std::vector<dcel::Point> &points);
@@ -227,6 +243,14 @@ private:
     void _computeRiverScores(Label &label, SpatialPointGrid &grid);
     void _initializeLabelBorderScores(std::vector<Label> &labels);
     void _computeBorderScores(Label &label, SpatialPointGrid &grid);
+    void _initializeAreaLabelOrientationScores(std::vector<Label> &labels);
+    void _initializeAreaLabelOrientationScore(Label &label);
+    double _calculationAreaLabelOrientationScore(LabelCandidate &label,
+                                               SpatialPointGrid &territoryGrid,
+                                               SpatialPointGrid &enemyGrid,
+                                               SpatialPointGrid &waterGrid);
+    void _initializeLabelBaseScores(std::vector<Label> &labels);
+    double _computeLabelBaseScore(LabelCandidate &label);
 
     Extents2d _extents;
     double _resolution;
@@ -258,7 +282,7 @@ private:
     double _minSlopeAngle = 0.2;
     double _maxSlopeAngle = 1.5;
     double _minSlopeLength = 0.75;
-    double _maxSlopeLength = 1.0;
+    double _maxSlopeLength = 1.3;
     double _minVerticalSlope = -0.25;
     double _maxVerticalSlope = 0.05;
 
@@ -281,6 +305,7 @@ private:
     std::vector<std::vector<double> > _contourData;
     std::vector<std::vector<double> > _riverData;
     std::vector<std::vector<double> > _borderData;
+    std::vector<int> _territoryData;
 
     std::vector<City> _cities;
     std::vector<Town> _towns;
@@ -290,9 +315,15 @@ private:
     double _townMarkerRadius = 5.0;
     std::string _cityLabelFontFace;
     std::string _townLabelFontFace;
+    std::string _areaLabelFontFace;
     int _cityLabelFontSize = 35;
     int _townLabelFontSize = 25;
+    int _areaLabelFontSize = 35;
+    int _numAreaLabelSamples = 250;
+    int _numAreaLabelCandidates = 35;
     double _spatialGridResolutionFactor = 5.0;
+    double _labelMarkerRadiusFactor = 1.0;
+    double _areaLabelMarkerRadiusFactor = 7.5;
     double _edgeScorePenalty = 4.0;
     double _markerScorePenalty = 4.0;
     double _minContourScorePenalty = 0.5;
@@ -301,6 +332,9 @@ private:
     double _maxRiverScorePenalty = 2.0;
     double _minBorderScorePenalty = 0.8;
     double _maxBorderScorePenalty = 2.0;
+    double _territoryScore = 0.0;
+    double _enemyScore = 6.0;
+    double _waterScore = 0.2;
 };
 
 }

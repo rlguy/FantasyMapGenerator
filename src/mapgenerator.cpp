@@ -14,14 +14,16 @@ gen::MapGenerator::MapGenerator(Extents2d extents, double resolution,
                                 _imgwidth(imgwidth), _imgheight(imgheight),
                                 _fontData("font_data/font_data.json"),
                                 _cityLabelFontFace("Times New Roman"),
-                                _townLabelFontFace("Times New Roman") {
+                                _townLabelFontFace("Times New Roman"),
+                                _areaLabelFontFace("Times New Roman") {
 }
 
 gen::MapGenerator::MapGenerator(Extents2d extents, double resolution) :
                                 _extents(extents), _resolution(resolution),
                                 _fontData("font_data/font_data.json"),
                                 _cityLabelFontFace("Times New Roman"),
-                                _townLabelFontFace("Times New Roman") {
+                                _townLabelFontFace("Times New Roman"),
+                                _areaLabelFontFace("Times New Roman") {
     double width = _extents.maxx - _extents.minx;
     double height = _extents.maxy - _extents.miny;
     double aspectratio = width / height;
@@ -1426,6 +1428,8 @@ void gen::MapGenerator::_getTerritoryDrawData(
 void gen::MapGenerator::_getTerritoryBorders(std::vector<VertexList> &borders) {
     std::vector<int> faceTerritories(_voronoi.faces.size(), -1);
     _getFaceTerritories(faceTerritories);
+    _territoryData = faceTerritories;
+
     _getBorderPaths(faceTerritories, borders);
 }
 
@@ -1789,16 +1793,12 @@ void gen::MapGenerator::_getLabelDrawData() {
         double minidx = 0;
         double minscore = 10000;
         for (unsigned int j = 0; j < labels[i].candidates.size(); j++) {
-            double score = labels[i].candidates[j].markerScore;
-            score += labels[i].candidates[j].edgeScore;
-            score += labels[i].candidates[j].contourScore;
-            score += labels[i].candidates[j].riverScore;
-            score += labels[i].candidates[j].borderScore;
-            score += labels[i].candidates[j].orientationScore;
+            double score = labels[i].candidates[j].baseScore;
             if (score < minscore) {
                 minscore = score;
                 minidx = j;
             }
+            //jsondata.push_back(_getLabelJSON(labels[i].candidates[j]));
         }
 
         jsondata.push_back(_getLabelJSON(labels[i].candidates[minidx]));
@@ -1811,9 +1811,30 @@ void gen::MapGenerator::_getLabelDrawData() {
 }
 
 void gen::MapGenerator::_initializeLabels(std::vector<Label> &labels) {
-    int numLabels = _cities.size() + _towns.size();
+    int numMarkers = _cities.size() + _towns.size();
+    int numAreas = _cities.size();
+    int numLabels = numMarkers + numAreas;
     std::vector<std::string> names = _getLabelNames(numLabels);
 
+    std::vector<std::string> markerNames(names.begin(), names.begin() + numMarkers);
+    std::vector<Label> markerLabels;
+    _initializeMarkerLabels(markerNames, markerLabels);
+
+    std::vector<std::string> areaNames(names.begin() + numMarkers, names.end());
+    for (unsigned int i = 0; i < areaNames.size(); i++) {
+        std::transform(areaNames[i].begin(), areaNames[i].end(), 
+                       areaNames[i].begin(), ::toupper);
+    }
+
+    std::vector<Label> areaLabels;
+    _initializeAreaLabels(areaNames, areaLabels);
+
+    labels.insert(labels.end(), markerLabels.begin(), markerLabels.end());
+    labels.insert(labels.end(), areaLabels.begin(), areaLabels.end());
+}
+
+void gen::MapGenerator::_initializeMarkerLabels(std::vector<std::string> names, 
+                                                std::vector<Label> &labels) {
     _fontData.setFontFace(_cityLabelFontFace, _cityLabelFontSize);
     for (unsigned int i = 0; i < _cities.size(); i++) {
         Label cityLabel;
@@ -1830,7 +1851,20 @@ void gen::MapGenerator::_initializeLabels(std::vector<Label> &labels) {
         labels.push_back(townLabel);
     }
 
-    _initializeLabelScores(labels);
+    _initializeMarkerLabelScores(labels);
+}
+
+void gen::MapGenerator::_initializeAreaLabels(std::vector<std::string> names, 
+                                              std::vector<Label> &labels) {
+    _fontData.setFontFace(_areaLabelFontFace, _areaLabelFontSize);
+    for (unsigned int i = 0; i < _cities.size(); i++) {
+        Label areaLabel;
+        _initializeAreaLabel(_cities[i], names.back(), areaLabel);
+        names.pop_back();
+        labels.push_back(areaLabel);
+    }
+
+    _initializeAreaLabelScores(labels);
 }
 
 void gen::MapGenerator::_initializeCityLabel(City &city, std::string &name, 
@@ -1842,7 +1876,7 @@ void gen::MapGenerator::_initializeCityLabel(City &city, std::string &name,
 
     double mapheight = _extents.maxy - _extents.miny;
     double radius = (_cityMarkerRadius / (double)_imgheight) * mapheight;
-    label.candidates = _getLabelCandidates(label, radius);
+    label.candidates = _getMarkerLabelCandidates(label, radius);
 }
 
 void gen::MapGenerator::_initializeTownLabel(Town &town, std::string &name, 
@@ -1854,7 +1888,16 @@ void gen::MapGenerator::_initializeTownLabel(Town &town, std::string &name,
 
     double mapheight = _extents.maxy - _extents.miny;
     double radius = (_townMarkerRadius / (double)_imgheight) * mapheight;
-    label.candidates = _getLabelCandidates(label, radius);
+    label.candidates = _getMarkerLabelCandidates(label, radius);
+}
+
+void gen::MapGenerator::_initializeAreaLabel(City &city, std::string &name, 
+                                             Label &label) {
+    label.text = name;
+    label.fontface = _fontData.getFontFace();
+    label.fontsize = _fontData.getFontSize();
+    label.position = city.position;
+    label.candidates = _getAreaLabelCandidates(label, city);
 }
 
 std::vector<std::string> gen::MapGenerator::_getLabelNames(int num) {
@@ -1892,7 +1935,7 @@ std::vector<std::string> gen::MapGenerator::_getLabelNames(int num) {
 }
 
 std::vector<gen::MapGenerator::LabelCandidate> 
-gen::MapGenerator::_getLabelCandidates(Label label, double markerRadius) {
+gen::MapGenerator::_getMarkerLabelCandidates(Label label, double markerRadius) {
     std::vector<LabelOffset> offsets = _getLabelOffsets(label, markerRadius);
     std::vector<LabelCandidate> candidates;
     for (unsigned int i = 0; i < offsets.size(); i++) {
@@ -1909,6 +1952,96 @@ gen::MapGenerator::_getLabelCandidates(Label label, double markerRadius) {
     }
 
     return candidates;
+}
+
+std::vector<gen::MapGenerator::LabelCandidate> 
+gen::MapGenerator::_getAreaLabelCandidates(Label label, City &city) {
+    std::vector<LabelCandidate> candidates;
+
+    std::vector<dcel::Point> samples;
+    _getAreaLabelSamples(city, samples);
+
+    dcel::Point p(0.0, 0.0);
+    Extents2d extents = _getTextExtents(label.text, p);
+    std::vector<Extents2d> charextents = _getCharacterExtents(label.text, p);
+
+    int cityid = -1;
+    for (unsigned int i = 0; i < _cities.size(); i++) {
+        if (_cities[i].faceid == city.faceid) {
+            cityid = i;
+            break;
+        }
+    }
+
+    dcel::Point center(0.5*(extents.minx + extents.maxx), 
+                       0.5*(extents.miny + extents.maxy));
+    for (unsigned int i = 0; i < samples.size(); i++) {
+        p = samples[i];
+        double tx = p.x - center.x;
+        double ty = p.y - center.y;
+
+        LabelCandidate c;
+        c.text = label.text;
+        c.fontface = label.fontface;
+        c.fontsize = label.fontsize;
+        c.position = dcel::Point(p.x - center.x, p.y - center.y);
+        c.extents = extents;
+        c.charextents = charextents;
+        c.cityid = cityid;
+
+        c.extents.minx += tx;
+        c.extents.miny += ty;
+        c.extents.maxx += tx;
+        c.extents.maxy += ty;
+        for (unsigned int j = 0; j < c.charextents.size(); j++) {
+            c.charextents[j].minx += tx;
+            c.charextents[j].miny += ty;
+            c.charextents[j].maxx += tx;
+            c.charextents[j].maxy += ty;
+        }
+
+        candidates.push_back(c);
+    }
+
+    return candidates;
+}
+
+void gen::MapGenerator::_getAreaLabelSamples(City &city, 
+                                             std::vector<dcel::Point> &samples) {
+    int cityid = _territoryData[city.faceid];
+    std::vector<int> territoryFaces;
+    std::vector<int> territoryCounts(_cities.size(), 0);
+    for (unsigned int i = 0; i < _territoryData.size(); i++) {
+        if (_territoryData[i] == cityid) {
+            territoryFaces.push_back(i);
+        }
+        if (_territoryData[i] != -1) {
+            territoryCounts[_territoryData[i]]++;
+        }
+    }
+    _shuffleVector(territoryFaces);
+
+    int maxCount = -1;
+    for (unsigned int i = 0; i < territoryCounts.size(); i++) {
+        maxCount = (int)fmax(territoryCounts[i], maxCount);
+    }
+
+    int numFaces = territoryFaces.size();
+    int numSamples = (int)(((double)numFaces / (double)maxCount)*_numAreaLabelSamples);
+    numSamples = fmin(numSamples, territoryFaces.size());
+    for (int i = 0; i < numSamples; i++) {
+        samples.push_back(_computeFacePosition(territoryFaces[i]));
+    }
+}
+
+void gen::MapGenerator::_shuffleVector(std::vector<int> &vector) {
+    int temp;
+    for (int i = vector.size() - 2; i >= 0; i--) {
+        int j = (rand() % (int)(i - 0 + 1));
+        temp = vector[i];
+        vector[i] = vector[j];
+        vector[j] = temp;
+    }
 }
 
 dcel::Point gen::MapGenerator::_getPixelCoordinates(dcel::Point &p) {
@@ -2048,12 +2181,40 @@ gen::MapGenerator::_getLabelOffsets(Label label, double markerRadius) {
     return labelOffsets;
 }
 
-void gen::MapGenerator::_initializeLabelScores(std::vector<Label> &labels) {
+void gen::MapGenerator::_initializeMarkerLabelScores(std::vector<Label> &labels) {
     _initializeLabelEdgeScores(labels);
     _initializeLabelMarkerScores(labels);
     _initializeLabelContourScores(labels);
     _initializeLabelRiverScores(labels);
     _initializeLabelBorderScores(labels);
+    _initializeLabelBaseScores(labels);
+}
+
+void gen::MapGenerator::_initializeAreaLabelScores(std::vector<Label> &labels) {
+    _initializeAreaLabelOrientationScores(labels);
+    _initializeLabelEdgeScores(labels);
+    _initializeAreaLabelMarkerScores(labels);
+    _initializeLabelContourScores(labels);
+    _initializeLabelRiverScores(labels);
+    _initializeLabelBorderScores(labels);
+    _initializeLabelBaseScores(labels);
+
+    for (unsigned int j = 0; j < labels.size(); j++) {
+        std::sort(labels[j].candidates.begin(),
+                  labels[j].candidates.end(), _sortAreaLabelsByScore);
+
+        std::vector<LabelCandidate> candidates;
+        int n = (int)fmin(labels[j].candidates.size(), _numAreaLabelCandidates);
+        for (int i = 0; i < n; i++) {
+            candidates.push_back(labels[j].candidates[i]);
+        }
+        labels[j].candidates = candidates;
+    }
+}
+
+bool gen::MapGenerator::_sortAreaLabelsByScore(LabelCandidate label1, 
+                                               LabelCandidate label2) { 
+    return label1.baseScore < label2.baseScore;
 }
 
 void gen::MapGenerator::_initializeLabelEdgeScores(std::vector<Label> &labels) {
@@ -2085,15 +2246,16 @@ void gen::MapGenerator::_initializeLabelMarkerScores(std::vector<Label> &labels)
     for (unsigned int j = 0; j < labels.size(); j++) {
         for (unsigned int i = 0; i < labels[j].candidates.size(); i++) {
             extents = labels[j].candidates[i].extents;
-            labels[j].candidates[i].markerScore = _getMarkerScore(extents);
+            labels[j].candidates[i].markerScore = _computeLabelMarkerScore(extents);
         }
     }
 }
 
-double gen::MapGenerator::_getMarkerScore(Extents2d extents) {
+double gen::MapGenerator::_computeLabelMarkerScore(Extents2d extents) {
     int count = 0;
     double mapheight = _extents.maxy - _extents.miny;
     double r = (_cityMarkerRadius / (double)_imgheight) * mapheight;
+    r *= _labelMarkerRadiusFactor;
     for (unsigned int i = 0; i < _cities.size(); i++) {
         dcel::Point p = _cities[i].position;
         dcel::Point minp(p.x - r, p.y - r);
@@ -2106,8 +2268,51 @@ double gen::MapGenerator::_getMarkerScore(Extents2d extents) {
     }
 
     r = (_townMarkerRadius / (double)_imgheight) * mapheight;
+    r *= _labelMarkerRadiusFactor;
     for (unsigned int i = 0; i < _towns.size(); i++) {
+        dcel::Point p = _towns[i].position;
+        dcel::Point minp(p.x - r, p.y - r);
+        dcel::Point maxp(p.x + r, p.y + r);
+
+        if (extents.containsPoint(minp) ||
+            extents.containsPoint(maxp)) {
+            count++;
+        }
+    }
+
+    return count * _markerScorePenalty;
+}
+
+void gen::MapGenerator::_initializeAreaLabelMarkerScores(std::vector<Label> &labels) {
+    Extents2d extents;
+    for (unsigned int j = 0; j < labels.size(); j++) {
+        for (unsigned int i = 0; i < labels[j].candidates.size(); i++) {
+            extents = labels[j].candidates[i].extents;
+            labels[j].candidates[i].markerScore = _computeAreaLabelMarkerScore(extents);
+        }
+    }
+}
+
+double gen::MapGenerator::_computeAreaLabelMarkerScore(Extents2d extents) {
+    int count = 0;
+    double mapheight = _extents.maxy - _extents.miny;
+    double r = (_cityMarkerRadius / (double)_imgheight) * mapheight;
+    r *= _areaLabelMarkerRadiusFactor;
+    for (unsigned int i = 0; i < _cities.size(); i++) {
         dcel::Point p = _cities[i].position;
+        dcel::Point minp(p.x - r, p.y - r);
+        dcel::Point maxp(p.x + r, p.y + r);
+
+        if (extents.containsPoint(minp) ||
+            extents.containsPoint(maxp)) {
+            count++;
+        }
+    }
+
+    r = (_townMarkerRadius / (double)_imgheight) * mapheight;
+    r *= _areaLabelMarkerRadiusFactor;
+    for (unsigned int i = 0; i < _towns.size(); i++) {
+        dcel::Point p = _towns[i].position;
         dcel::Point minp(p.x - r, p.y - r);
         dcel::Point maxp(p.x + r, p.y + r);
 
@@ -2249,4 +2454,83 @@ void gen::MapGenerator::_computeBorderScores(Label &label,
             label.candidates[i].borderScore = _minBorderScorePenalty + f * scorediff;
         }
     }
+}
+
+void gen::MapGenerator::_initializeAreaLabelOrientationScores(std::vector<Label> &labels) {
+    for (unsigned int i = 0; i < labels.size(); i++) {
+        _initializeAreaLabelOrientationScore(labels[i]);
+    }
+}
+
+void gen::MapGenerator::_initializeAreaLabelOrientationScore(Label &label) {
+    std::vector<dcel::Point> facePositions = _computeFacePositions();
+    std::vector<bool> isFaceInMap(_voronoi.faces.size(), false);
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        isFaceInMap[i] = _extents.containsPoint(facePositions[i]);
+    }
+
+    std::vector<dcel::Point> territoryPoints;
+    std::vector<dcel::Point> waterPoints;
+    std::vector<dcel::Point> enemyPoints;
+    int territoryID = label.candidates[0].cityid;
+    for (unsigned int i = 0; i < _territoryData.size(); i++) {
+        if (!isFaceInMap[i]) { continue; }
+
+        int id = _territoryData[i];
+        if (id == territoryID) {
+            territoryPoints.push_back(facePositions[i]);
+        } else if (id == -1) {
+            waterPoints.push_back(facePositions[i]);
+        } else {
+            enemyPoints.push_back(facePositions[i]);
+        }
+    }
+
+    double dx = _spatialGridResolutionFactor*_resolution;
+    SpatialPointGrid territoryGrid(territoryPoints, dx);
+    SpatialPointGrid enemyGrid(enemyPoints, dx);
+    SpatialPointGrid waterGrid(waterPoints, dx);
+
+    for (unsigned int i = 0; i < label.candidates.size(); i++) {
+        double score = _calculationAreaLabelOrientationScore(
+                    label.candidates[i], territoryGrid, enemyGrid, waterGrid);
+        label.candidates[i].orientationScore = score;
+    }
+}
+
+double gen::MapGenerator::_calculationAreaLabelOrientationScore(
+                                LabelCandidate &label,
+                                SpatialPointGrid &territoryGrid,
+                                SpatialPointGrid &enemyGrid,
+                                SpatialPointGrid &waterGrid) {
+
+    int territoryCount = _getLabelPointCount(label, territoryGrid);
+    int enemyCount = _getLabelPointCount(label, enemyGrid);
+    int waterCount = _getLabelPointCount(label, waterGrid);
+    int total = territoryCount + enemyCount + waterCount;
+    double territoryPCT = (double)territoryCount / (double)total;
+    double enemyPCT = (double)enemyCount / (double)total;
+    double waterPCT = (double)waterCount / (double)total;
+
+    double score = territoryPCT*_territoryScore +
+                   enemyPCT*_enemyScore +
+                   waterPCT*_waterScore;
+
+    return score;
+}
+
+void gen::MapGenerator::_initializeLabelBaseScores(std::vector<Label> &labels) {
+    for (unsigned int j = 0; j < labels.size(); j++) {
+        for (unsigned int i = 0; i < labels[j].candidates.size(); i++) {
+            double score = _computeLabelBaseScore(labels[j].candidates[i]);
+            labels[j].candidates[i].baseScore = score;
+        }
+    }
+}
+
+double gen::MapGenerator::_computeLabelBaseScore(LabelCandidate &label) {
+    double sum = label.orientationScore + label.edgeScore + label.markerScore +
+                 label.contourScore + label.riverScore + label.borderScore;
+    double avg = (1.0 / 6.0) * sum;
+    return avg;
 }

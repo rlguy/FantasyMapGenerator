@@ -1,9 +1,12 @@
 Arial, 55
+Arial, 45
 Arial, 35
 Arial, 25
 Courier, 55
+Courier, 45
 Courier, 35
 Courier, 25
 Times New Roman, 55
+Times New Roman, 45
 Times New Roman, 35
 Times New Roman, 25
