@@ -81,3 +81,25 @@ This method tends to create jagged borders and disjointed territories. The terri
 Borders are then generated around the city territories.
 
 ![alt tag](http://rlguy.com/map_generation/images/territory_borders.jpg)
+
+Towns can be added to the map by using the same process that is used to generate city locations. Towns are contained within the city territories and are not involved in territory/border generation.
+
+## Generating Label Positions
+
+The label placement system is based on methods described in this paper: [A General Cartographic Labeling Algorithm](http://www.merl.com/publications/docs/TR96-04.pdf). 
+
+There are two types of labels that will need to be generated: marker labels that label city and town markers, and area labels that label the city territories.
+
+The labeling process begins by generating candidate label positions for the marker and area labels and calculating a base score for each label.
+
+Marker label candidates are generated around a city or town marker. The calculated scores depend on orientation about the marker, how many river, border, and contour lines the label overlaps, whether the label overlaps another marker, and whether the marker is contained within the map.
+
+![alt tag](http://rlguy.com/map_generation/images/marker_label_candidates.jpg)
+
+Area label candidates are generated within territory boundaries. The calculated scores are similar to the marker label scores except that the orientation score is based upon how much of the label is contained within the territory that it names.
+
+![alt tag](http://rlguy.com/map_generation/images/area_label_candidates.jpg)
+
+The number of area label candidates is then narrowed down by selecting only the candidates with the best scores.
+
+![alt tag](http://rlguy.com/map_generation/images/area_label_candidates_refined.jpg)
