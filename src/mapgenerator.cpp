@@ -513,8 +513,13 @@ void gen::MapGenerator::_fillDepressions() {
         finalHeightMap.set(v, _heightMap(v));
     }
 
+    std::vector<std::vector<int> > neighbours(_heightMap.size(), std::vector<int>());
+    for (unsigned int i = 0; i < neighbours.size(); i++) {
+        neighbours[i].reserve(3);
+        _vertexMap.getNeighbourIndices(_vertexMap.vertices[i], neighbours[i]);
+    }
+
     double eps = 1e-5;
-    std::vector<double> nbs;
     for (;;) {
         bool heightUpdated = false;
         for (unsigned int i = 0; i < _heightMap.size(); i++) {
@@ -522,16 +527,15 @@ void gen::MapGenerator::_fillDepressions() {
                 continue;
             }
 
-            nbs.clear();
-            finalHeightMap.getNeighbours(i, nbs);
-            for (unsigned int nidx = 0; nidx < nbs.size(); nidx++) {
-                if (_heightMap(i) >= nbs[nidx] + eps) {
+            for (unsigned int nidx = 0; nidx < neighbours[i].size(); nidx++) {
+                double nval = finalHeightMap(neighbours[i][nidx]);
+                if (_heightMap(i) >= nval + eps) {
                     finalHeightMap.set(i, _heightMap(i));
                     heightUpdated = true;
                     break;
                 }
 
-                double hval = nbs[nidx] + eps;
+                double hval = nval + eps;
                 if ((finalHeightMap(i) > hval) && (hval > _heightMap(i))) {
                     finalHeightMap.set(i, hval);
                     heightUpdated = true;
