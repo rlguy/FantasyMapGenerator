@@ -73,6 +73,10 @@ private:
         int faceid;
     };
 
+    struct CollisionData {
+        int id;
+    };
+
     struct LabelCandidate {
         std::string text;
         std::string fontface;
@@ -89,6 +93,10 @@ private:
         double riverScore;
         double borderScore;
         double baseScore;
+
+        int parentIdx;
+        int collisionIdx;
+        std::vector<CollisionData> collisionData;
     };
 
     struct Label {
@@ -99,6 +107,7 @@ private:
 
         std::vector<LabelCandidate> candidates;
         int candidateIdx = -1;
+        double score = 0.0;
     };
 
     struct LabelOffset {
@@ -201,7 +210,7 @@ private:
                                   std::vector<bool> &isVertexProcessed,
                                   VertexList &path);
 
-    void _getLabelDrawData();
+    void _getLabelDrawData(std::vector<jsoncons::json> &data);
     void _initializeLabels(std::vector<Label> &labels);
     void _initializeMarkerLabels(std::vector<std::string> names, 
                                  std::vector<Label> &labels);
@@ -251,6 +260,18 @@ private:
                                                SpatialPointGrid &waterGrid);
     void _initializeLabelBaseScores(std::vector<Label> &labels);
     double _computeLabelBaseScore(LabelCandidate &label);
+    void _generateLabelPlacements(std::vector<Label> &labels);
+    void _randomizeLabelPlacements(std::vector<Label> &labels);
+    int _randomRangeInt(int minval, int maxval);
+    double _randomRangeDouble(double minval, double maxval);
+    void _initializeLabelCollisionData(std::vector<Label> &labels);
+    void _initializeLabelCollisionData(std::vector<Label> &labels, 
+                                       LabelCandidate &label);
+    double _calculateLabelPlacementScore(std::vector<Label> &labels);
+    double _calculateLabelPlacementScore(Label &label,
+                                         std::vector<bool> &isCandidateActive);
+    bool _isLabelOverlapping(LabelCandidate &label1, LabelCandidate &label2);
+    bool _isExtentsOverlapping(Extents2d &e1, Extents2d &e2);
 
     Extents2d _extents;
     double _resolution;
@@ -319,22 +340,29 @@ private:
     int _cityLabelFontSize = 35;
     int _townLabelFontSize = 25;
     int _areaLabelFontSize = 35;
-    int _numAreaLabelSamples = 250;
-    int _numAreaLabelCandidates = 35;
+    int _numAreaLabelSamples = 500;
+    int _numAreaLabelCandidates = 120;
     double _spatialGridResolutionFactor = 5.0;
     double _labelMarkerRadiusFactor = 1.0;
     double _areaLabelMarkerRadiusFactor = 7.5;
     double _edgeScorePenalty = 4.0;
-    double _markerScorePenalty = 4.0;
+    double _markerScorePenalty = 6.0;
     double _minContourScorePenalty = 0.5;
     double _maxContourScorePenalty = 1.5;
     double _minRiverScorePenalty = 0.7;
     double _maxRiverScorePenalty = 2.0;
     double _minBorderScorePenalty = 0.8;
     double _maxBorderScorePenalty = 2.0;
+    double _overlapScorePenalty = 4.0;
     double _territoryScore = 0.0;
     double _enemyScore = 6.0;
     double _waterScore = 0.2;
+
+    double _initialTemperature = 0.91023922;     // 1.0 / log(3)
+    double _annealingFactor = 0.9;
+    double _maxTemperatureChanges = 100;
+    int _successfulRepositioningFactor = 5;
+    int _totalRepositioningFactor = 20;
 };
 
 }

@@ -342,7 +342,8 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     _getTerritoryDrawData(territoryData);
     _borderData = territoryData;
 
-    _getLabelDrawData();
+    std::vector<jsoncons::json> labelData;
+    _getLabelDrawData(labelData);
 
     double width = _extents.maxx - _extents.minx;
     double height = _extents.maxy - _extents.miny;
@@ -356,6 +357,7 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     output["city"] = cityData;
     output["town"] = townData;
     output["territory"] = territoryData;
+    output["label"] = labelData;
 
     std::ofstream file(filename);
     file << output;
@@ -429,7 +431,7 @@ std::vector<dcel::Point> gen::MapGenerator::_computeFacePositions() {
 
         edges.clear();
         _voronoi.getOuterComponents(f, edges);
-
+        
         double sumx = 0.0;
         double sumy = 0.0;
         for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
@@ -1784,30 +1786,17 @@ void gen::MapGenerator::_getBorderPath(int vidx,
     }
 }
 
-void gen::MapGenerator::_getLabelDrawData() {
+void gen::MapGenerator::_getLabelDrawData(std::vector<jsoncons::json> &data) {
     std::vector<Label> labels;
     _initializeLabels(labels);
+    _generateLabelPlacements(labels);
 
     std::vector<jsoncons::json> jsondata;
     for (unsigned int i = 0; i < labels.size(); i++) {
-        double minidx = 0;
-        double minscore = 10000;
-        for (unsigned int j = 0; j < labels[i].candidates.size(); j++) {
-            double score = labels[i].candidates[j].baseScore;
-            if (score < minscore) {
-                minscore = score;
-                minidx = j;
-            }
-            //jsondata.push_back(_getLabelJSON(labels[i].candidates[j]));
-        }
-
-        jsondata.push_back(_getLabelJSON(labels[i].candidates[minidx]));
+        LabelCandidate label = labels[i].candidates[labels[i].candidateIdx];
+        label.baseScore = labels[i].score;
+        data.push_back(_getLabelJSON(label));
     }
-
-    jsoncons::json labeldata = jsondata;
-    std::ofstream file("labeldata.json");
-    file << labeldata;
-    file.close();
 }
 
 void gen::MapGenerator::_initializeLabels(std::vector<Label> &labels) {
@@ -2114,6 +2103,7 @@ jsoncons::json gen::MapGenerator::_getLabelJSON(LabelCandidate &label) {
         charextents.push_back(nmax.y);
     }
     json["charextents"] = charextents;
+    json["score"] = label.baseScore;
 
     return json;
 }
@@ -2258,11 +2248,8 @@ double gen::MapGenerator::_computeLabelMarkerScore(Extents2d extents) {
     r *= _labelMarkerRadiusFactor;
     for (unsigned int i = 0; i < _cities.size(); i++) {
         dcel::Point p = _cities[i].position;
-        dcel::Point minp(p.x - r, p.y - r);
-        dcel::Point maxp(p.x + r, p.y + r);
-
-        if (extents.containsPoint(minp) ||
-            extents.containsPoint(maxp)) {
+        Extents2d markerExtents(p.x - r, p.y - r, p.x + r, p.y + r);
+        if (_isExtentsOverlapping(extents, markerExtents)) {
             count++;
         }
     }
@@ -2271,11 +2258,8 @@ double gen::MapGenerator::_computeLabelMarkerScore(Extents2d extents) {
     r *= _labelMarkerRadiusFactor;
     for (unsigned int i = 0; i < _towns.size(); i++) {
         dcel::Point p = _towns[i].position;
-        dcel::Point minp(p.x - r, p.y - r);
-        dcel::Point maxp(p.x + r, p.y + r);
-
-        if (extents.containsPoint(minp) ||
-            extents.containsPoint(maxp)) {
+        Extents2d markerExtents(p.x - r, p.y - r, p.x + r, p.y + r);
+        if (_isExtentsOverlapping(extents, markerExtents)) {
             count++;
         }
     }
@@ -2300,11 +2284,8 @@ double gen::MapGenerator::_computeAreaLabelMarkerScore(Extents2d extents) {
     r *= _areaLabelMarkerRadiusFactor;
     for (unsigned int i = 0; i < _cities.size(); i++) {
         dcel::Point p = _cities[i].position;
-        dcel::Point minp(p.x - r, p.y - r);
-        dcel::Point maxp(p.x + r, p.y + r);
-
-        if (extents.containsPoint(minp) ||
-            extents.containsPoint(maxp)) {
+        Extents2d markerExtents(p.x - r, p.y - r, p.x + r, p.y + r);
+        if (_isExtentsOverlapping(extents, markerExtents)) {
             count++;
         }
     }
@@ -2313,11 +2294,8 @@ double gen::MapGenerator::_computeAreaLabelMarkerScore(Extents2d extents) {
     r *= _areaLabelMarkerRadiusFactor;
     for (unsigned int i = 0; i < _towns.size(); i++) {
         dcel::Point p = _towns[i].position;
-        dcel::Point minp(p.x - r, p.y - r);
-        dcel::Point maxp(p.x + r, p.y + r);
-
-        if (extents.containsPoint(minp) ||
-            extents.containsPoint(maxp)) {
+        Extents2d markerExtents(p.x - r, p.y - r, p.x + r, p.y + r);
+        if (_isExtentsOverlapping(extents, markerExtents)) {
             count++;
         }
     }
@@ -2372,9 +2350,13 @@ void gen::MapGenerator::_computeContourScores(Label &label,
         if (counts[i] == 0) {
             label.candidates[i].contourScore = 0.0;
         } else {
-            double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
-            double scorediff = _maxContourScorePenalty - _minContourScorePenalty;
-            label.candidates[i].contourScore = _minContourScorePenalty + f * scorediff;
+            if (maxcount > mincount) {
+                double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
+                double scorediff = _maxContourScorePenalty - _minContourScorePenalty;
+                label.candidates[i].contourScore = _minContourScorePenalty + f * scorediff;
+            } else {
+                label.candidates[i].contourScore = _maxContourScorePenalty;
+            }
         }
     }
 }
@@ -2415,9 +2397,13 @@ void gen::MapGenerator::_computeRiverScores(Label &label,
         if (counts[i] == 0) {
             label.candidates[i].riverScore = 0.0;
         } else {
-            double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
-            double scorediff = _maxRiverScorePenalty - _minRiverScorePenalty;
-            label.candidates[i].riverScore = _minRiverScorePenalty + f * scorediff;
+            if (maxcount > mincount) {
+                double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
+                double scorediff = _maxRiverScorePenalty - _minRiverScorePenalty;
+                label.candidates[i].riverScore = _minRiverScorePenalty + f * scorediff;
+            } else {
+                label.candidates[i].riverScore = _maxRiverScorePenalty;
+            }
         }
     }
 }
@@ -2449,9 +2435,13 @@ void gen::MapGenerator::_computeBorderScores(Label &label,
         if (counts[i] == 0) {
             label.candidates[i].borderScore = 0.0;
         } else {
-            double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
-            double scorediff = _maxBorderScorePenalty - _minBorderScorePenalty;
-            label.candidates[i].borderScore = _minBorderScorePenalty + f * scorediff;
+            if (maxcount > mincount) {
+                double f = (double)(counts[i]-mincount) / (double)(maxcount-mincount);
+                double scorediff = _maxBorderScorePenalty - _minBorderScorePenalty;
+                label.candidates[i].borderScore = _minBorderScorePenalty + f * scorediff;
+            } else {
+                label.candidates[i].borderScore = _maxBorderScorePenalty;
+            }
         }
     }
 }
@@ -2469,6 +2459,7 @@ void gen::MapGenerator::_initializeAreaLabelOrientationScore(Label &label) {
         isFaceInMap[i] = _extents.containsPoint(facePositions[i]);
     }
 
+    dcel::Point centerOfMass(0.0, 0.0);
     std::vector<dcel::Point> territoryPoints;
     std::vector<dcel::Point> waterPoints;
     std::vector<dcel::Point> enemyPoints;
@@ -2479,12 +2470,24 @@ void gen::MapGenerator::_initializeAreaLabelOrientationScore(Label &label) {
         int id = _territoryData[i];
         if (id == territoryID) {
             territoryPoints.push_back(facePositions[i]);
+            centerOfMass.x += facePositions[i].x;
+            centerOfMass.y += facePositions[i].y;
         } else if (id == -1) {
             waterPoints.push_back(facePositions[i]);
         } else {
             enemyPoints.push_back(facePositions[i]);
         }
     }
+
+    centerOfMass.x /= (double)territoryPoints.size();
+    centerOfMass.y /= (double)territoryPoints.size();
+    double maxdistsq = 0.0;
+    for (unsigned int i = 0; i < territoryPoints.size(); i++) {
+        double dx = centerOfMass.x - territoryPoints[i].x;
+        double dy = centerOfMass.y - territoryPoints[i].y;
+        maxdistsq = fmax(dx*dx + dy*dy, maxdistsq); 
+    }
+    double territoryRadius = sqrt(maxdistsq);
 
     double dx = _spatialGridResolutionFactor*_resolution;
     SpatialPointGrid territoryGrid(territoryPoints, dx);
@@ -2494,6 +2497,14 @@ void gen::MapGenerator::_initializeAreaLabelOrientationScore(Label &label) {
     for (unsigned int i = 0; i < label.candidates.size(); i++) {
         double score = _calculationAreaLabelOrientationScore(
                     label.candidates[i], territoryGrid, enemyGrid, waterGrid);
+
+        Extents2d e = label.candidates[i].extents;
+        dcel::Point c(0.5*(e.maxx + e.minx), 0.5*(e.maxy + e.miny));
+        double dx = c.x - centerOfMass.x;
+        double dy = c.y - centerOfMass.y;
+        double dist = sqrt(dx*dx + dy*dy);
+        score += dist / territoryRadius;
+
         label.candidates[i].orientationScore = score;
     }
 }
@@ -2533,4 +2544,143 @@ double gen::MapGenerator::_computeLabelBaseScore(LabelCandidate &label) {
                  label.contourScore + label.riverScore + label.borderScore;
     double avg = (1.0 / 6.0) * sum;
     return avg;
+}
+
+void gen::MapGenerator::_generateLabelPlacements(std::vector<Label> &labels) {
+    _randomizeLabelPlacements(labels);
+    _initializeLabelCollisionData(labels);
+    double score = _calculateLabelPlacementScore(labels);
+
+    int numLabels = labels.size();
+    double temperature = _initialTemperature;
+    int numTemperatureChanges = 0;
+    int numRepositionings = 0;
+    int numSuccessfulRepositionings = 0;
+    int maxSuccessfulRepositionings = _successfulRepositioningFactor * numLabels;
+    int maxTotalRepositionings = _totalRepositioningFactor * numLabels;
+    while (numTemperatureChanges < _maxTemperatureChanges) {
+        int randlidx = _randomRangeInt(0, labels.size());
+        int randcidx = _randomRangeInt(0, labels[randlidx].candidates.size());
+        int lastcidx = labels[randlidx].candidateIdx;
+        labels[randlidx].candidateIdx = randcidx;
+
+        double newScore = _calculateLabelPlacementScore(labels);
+        double diff = newScore - score;
+        if (diff < 0 && fabs(diff) > 1e-9) {
+            score = newScore;
+            numSuccessfulRepositionings++;
+        } else {
+            double prob = 1.0 - exp(-diff / temperature);
+            if (_randomRangeDouble(0, 1) < prob) {
+                labels[randlidx].candidateIdx = lastcidx;
+            } else {
+                score = newScore;
+            }
+        }
+
+        numRepositionings++;
+        if (numSuccessfulRepositionings > maxSuccessfulRepositionings || 
+            numRepositionings > maxTotalRepositionings) {
+            if (numSuccessfulRepositionings == 0) {
+                break;
+            }
+
+            temperature *= _annealingFactor;
+            numTemperatureChanges++;
+            numRepositionings = 0;
+            numSuccessfulRepositionings = 0;
+        }
+    }
+}
+
+void gen::MapGenerator::_randomizeLabelPlacements(std::vector<Label> &labels) {
+    for (unsigned int i = 0; i < labels.size(); i++) {
+        labels[i].candidateIdx = _randomRangeInt(0, labels[i].candidates.size());
+    }
+}
+
+int gen::MapGenerator::_randomRangeInt(int minval, int maxval) {
+    return minval + (rand() % (int)(maxval - minval));
+}
+
+double gen::MapGenerator::_randomRangeDouble(double minval, double maxval) {
+    return minval + (double)rand() / ((double)RAND_MAX / (maxval - minval));
+}
+
+void gen::MapGenerator::_initializeLabelCollisionData(std::vector<Label> &labels) {
+    int uid = 0;
+    for (unsigned int j = 0; j < labels.size(); j++) {
+        for (unsigned int i = 0; i < labels[j].candidates.size(); i++) {
+            labels[j].candidates[i].parentIdx = j;
+            labels[j].candidates[i].collisionIdx = uid;
+            uid++;
+        }
+    }
+
+    for (unsigned int j = 0; j < labels.size(); j++) {
+        for (unsigned int i = 0; i < labels[j].candidates.size(); i++) {
+            _initializeLabelCollisionData(labels, labels[j].candidates[i]);
+        }
+    }
+}
+
+void gen::MapGenerator::_initializeLabelCollisionData(std::vector<Label> &labels,
+                                                      LabelCandidate &label) {
+    for (unsigned int j = 0; j < labels.size(); j++) {
+        if ((int)j == label.parentIdx) {
+            continue;
+        }
+
+        for (unsigned int i = 0; i < labels[j].candidates.size(); i++) {
+            if (_isLabelOverlapping(label, labels[j].candidates[i])) {
+                CollisionData cdata;
+                cdata.id = labels[j].candidates[i].collisionIdx;
+                label.collisionData.push_back(cdata);
+            }
+        }
+    }
+}
+
+double gen::MapGenerator::_calculateLabelPlacementScore(std::vector<Label> &labels) {
+    int maxid = labels.back().candidates.back().collisionIdx;
+    std::vector<bool> isCandidateActive(maxid + 1, false);
+    for (unsigned int i = 0; i < labels.size(); i++) {
+        int cid = labels[i].candidateIdx;
+        int activeIdx = labels[i].candidates[cid].collisionIdx;
+        isCandidateActive[activeIdx] = true;
+    }
+
+    double sum = 0.0;
+    for (unsigned int i = 0; i < labels.size(); i++) {
+        labels[i].score = _calculateLabelPlacementScore(labels[i], isCandidateActive);
+        sum += labels[i].score;
+    }
+    double avg = sum / (double)labels.size();
+
+    return avg;
+}
+
+double gen::MapGenerator::_calculateLabelPlacementScore(Label &label, 
+                                                        std::vector<bool> &isActive) {
+    int cid = label.candidateIdx;
+    double baseScore = label.candidates[cid].baseScore;
+    double overlapScore = 0.0;
+    for (unsigned int i = 0; i < label.candidates[cid].collisionData.size(); i++) {
+        int collisionIdx = label.candidates[cid].collisionData[i].id;
+        if (isActive[collisionIdx]) {
+            overlapScore += _overlapScorePenalty;
+        }
+    }
+
+    return baseScore + overlapScore;
+}
+
+bool gen::MapGenerator::_isLabelOverlapping(LabelCandidate &label1, 
+                                            LabelCandidate &label2) {
+    return _isExtentsOverlapping(label1.extents, label2.extents);
+}
+
+bool gen::MapGenerator::_isExtentsOverlapping(Extents2d &e1, Extents2d &e2) {
+    return e1.minx < e2.maxx && e1.maxx > e2.minx &&
+           e1.miny < e2.maxy && e1.maxy > e2.miny;
 }
