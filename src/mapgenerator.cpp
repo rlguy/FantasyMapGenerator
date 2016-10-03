@@ -1,11 +1,14 @@
 #include "mapgenerator.h"
 
 gen::MapGenerator::MapGenerator() {
-    Extents2d defaultExtents(-20, -20, 20, 20);
-    double defaultResolution = 0.4;
-
+    Extents2d defaultExtents(0, 0, _defaultExtentsWidth, _defaultExtentsHeight);
     _extents = defaultExtents;
-    _resolution = defaultResolution;
+    _resolution = _defaultResolution;
+    double width = _extents.maxx - _extents.minx;
+    double height = _extents.maxy - _extents.miny;
+    double aspectratio = width / height;
+    _imgwidth = (int)(aspectratio*_defaultImageHeight + 0.5);
+    _imgheight = _defaultImageHeight;
 }
 
 gen::MapGenerator::MapGenerator(Extents2d extents, double resolution, 
@@ -32,47 +35,8 @@ gen::MapGenerator::MapGenerator(Extents2d extents, double resolution) :
 }
 
 void gen::MapGenerator::initialize() {
-    std::cout << "Generating samples within " << 
-                 _extents.maxx - _extents.minx << " x " << 
-                 _extents.maxy - _extents.miny << 
-                 " area with radius " << _resolution << "." << std::endl;
-
-    // Boundary vertices in the Voronoi diagram cannot be used as
-    // grid nodes and will be excluded from the map grid. Extending the
-    // bounds for the sample area will generate a Voronoi diagram that
-    // extends past the map bounds, resulting in less excluded grid nodes.
-    double pad = _samplePadFactor * _resolution;
-    Extents2d sampleExtents(_extents.minx - pad, _extents.miny - pad,
-                            _extents.maxx + pad, _extents.maxy + pad);
-
-    std::vector<dcel::Point> samples;
-    samples = PoissonDiscSampler::generateSamples(sampleExtents, 
-                                                  _resolution, 25);
-
-    std::cout << "Finished Generating " << samples.size() << 
-                 " samples." << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "Generating Voronoi diagram with " << samples.size() << 
-                 " points." << std::endl;
-
-    _voronoi = Voronoi::voronoi(samples);
-
-    std::cout << "Finished generating Voronoi diagram." << std::endl;
-    std::cout << "# Vertices:   " << _voronoi.vertices.size() << std::endl;
-    std::cout << "# Half Edges: " << _voronoi.edges.size() << std::endl;
-    std::cout << "# Faces:      " << _voronoi.faces.size() << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "Initializing map vertices." << std::endl;
-    _vertexMap = VertexMap(&_voronoi, _extents);
-    std::cout << "Finished initializing map vertices." << std::endl;
-    std::cout << "# Vertices: " << _vertexMap.vertices.size() << std::endl;
-    std::cout << "# Interior: " << _vertexMap.interior.size() << std::endl;
-    std::cout << "# Edge:     " << _vertexMap.edge.size() << std::endl;
-    std::cout << std::endl;
-
-    _heightMap = NodeMap<double>(&_vertexMap, 0);
+    _initializeVoronoiData();
+    _initializeMapData();
     _isInitialized = true;
 }
 
@@ -364,6 +328,104 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     file.close();
 }
 
+void gen::MapGenerator::_initializeVoronoiData() {
+    // Boundary vertices in the Voronoi diagram cannot be used as
+    // grid nodes and will be excluded from the map grid. Extending the
+    // bounds for the sample area will generate a Voronoi diagram that
+    // extends past the map bounds, resulting in less excluded grid nodes.
+    double pad = _samplePadFactor * _resolution;
+    Extents2d sampleExtents(_extents.minx - pad, _extents.miny - pad,
+                            _extents.maxx + pad, _extents.maxy + pad);
+
+    std::vector<dcel::Point> samples;
+    samples = PoissonDiscSampler::generateSamples(sampleExtents, 
+                                                  _resolution, 
+                                                  _poissonSamplerKValue);
+    _voronoi = Voronoi::voronoi(samples);
+}
+
+void gen::MapGenerator::_initializeMapData() {
+    _vertexMap = VertexMap(&_voronoi, _extents);
+    _initializeNeighbourMap();
+    _initializeFaceNeighbours();
+    _initializeFaceVertices();
+    _initializeFaceEdges();
+
+    _heightMap = NodeMap<double>(&_vertexMap, 0);
+}
+
+void gen::MapGenerator::_initializeNeighbourMap() {
+    _neighbourMap = NodeMap<std::vector<int> >(&_vertexMap);
+    std::vector<int> indices;
+    indices.reserve(3);
+    for (unsigned int i = 0; i < _neighbourMap.size(); i++) {
+        indices.clear();
+        _vertexMap.getNeighbourIndices(_vertexMap.vertices[i], indices);
+        _neighbourMap.set(i, indices);
+    }
+}
+
+void gen::MapGenerator::_initializeFaceNeighbours() {
+    _faceNeighbours.reserve(_voronoi.faces.size());
+    dcel::Face f;
+    dcel::HalfEdge h;
+    std::vector<dcel::HalfEdge> outerComponents;
+    std::vector<int> faceindices;
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        f = _voronoi.faces[i];
+
+        outerComponents.clear();
+        _voronoi.getOuterComponents(f, outerComponents);
+        faceindices.clear();
+        for (unsigned int nidx = 0; nidx < outerComponents.size(); nidx++) {
+            h = _voronoi.twin(outerComponents[nidx]);
+            int nfidx = h.incidentFace.ref;
+            if (nfidx != -1) {
+                faceindices.push_back(nfidx);
+            }
+        }
+
+        _faceNeighbours.push_back(std::vector<int>(faceindices.size(), -1));
+        for (unsigned int idx = 0; idx < faceindices.size(); idx++) {
+            _faceNeighbours[i][idx] = faceindices[idx];
+        }
+    }
+}
+
+void gen::MapGenerator::_initializeFaceVertices() {
+    _faceVertices.reserve(_voronoi.faces.size());
+    dcel::Face f;
+    dcel::Vertex v;
+    std::vector<dcel::HalfEdge> edges;
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        f = _voronoi.faces[i];
+
+        edges.clear();
+        _voronoi.getOuterComponents(f, edges);
+        _faceVertices.push_back(std::vector<int>(edges.size(), -1));
+        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
+            v = _voronoi.origin(edges[eidx]);
+            _faceVertices[i][eidx] = v.id.ref;
+        }
+    }
+}
+
+void gen::MapGenerator::_initializeFaceEdges() {
+    _faceEdges.reserve(_voronoi.faces.size());
+    dcel::Face f;
+    std::vector<dcel::HalfEdge> edges;
+    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
+        f = _voronoi.faces[i];
+
+        edges.clear();
+        _voronoi.getOuterComponents(f, edges);
+        _faceEdges.push_back(std::vector<int>(edges.size(), -1));
+        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
+            _faceEdges[i][eidx] = edges[eidx].id.ref;
+        }
+    }
+}
+
 jsoncons::json gen::MapGenerator::_getExtentsJSON() {
     jsoncons::json extents;
     extents["minx"] = _extents.minx;
@@ -396,23 +458,17 @@ std::vector<double> gen::MapGenerator::_computeFaceValues(NodeMap<double> &heigh
     std::vector<double> faceheights;
     faceheights.reserve(_voronoi.faces.size());
 
-    dcel::Face f;
     dcel::Vertex v;
-    std::vector<dcel::HalfEdge> edges;
-    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
-        f = _voronoi.faces[i];
-
-        edges.clear();
-        _voronoi.getOuterComponents(f, edges);
+    for (unsigned int j = 0; j < _voronoi.faces.size(); j++) {
 
         double sum = 0.0;
-        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
-            v = _voronoi.origin(edges[eidx]);
+        for (unsigned int i = 0; i < _faceVertices[j].size(); i++) {
+            v = _voronoi.getVertex(_faceVertices[j][i]);
             if (heightMap.isNode(v)) {
                 sum += heightMap(v);
             }
         }
-        double avg = sum / edges.size();
+        double avg = sum / _faceVertices[j].size();
         faceheights.push_back(avg);
     }
 
@@ -423,45 +479,34 @@ std::vector<dcel::Point> gen::MapGenerator::_computeFacePositions() {
     std::vector<dcel::Point> positions;
     positions.reserve(_voronoi.faces.size());
 
-    dcel::Face f;
     dcel::Point p;
-    std::vector<dcel::HalfEdge> edges;
-    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
-        f = _voronoi.faces[i];
-
-        edges.clear();
-        _voronoi.getOuterComponents(f, edges);
-        
+    for (unsigned int j = 0; j < _voronoi.faces.size(); j++) {
         double sumx = 0.0;
         double sumy = 0.0;
-        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
-            p = _voronoi.origin(edges[eidx]).position;
+        for (unsigned int i = 0; i < _faceVertices[j].size(); i++) {
+            p = _voronoi.getVertex(_faceVertices[j][i]).position;
             sumx += p.x;
             sumy += p.y;
         }
-        positions.push_back(dcel::Point(sumx / edges.size(), 
-                                        sumy / edges.size()));
+        positions.push_back(dcel::Point(sumx / _faceVertices[j].size(), 
+                                        sumy / _faceVertices[j].size()));
     }
 
     return positions;
 }
 
 dcel::Point gen::MapGenerator::_computeFacePosition(int fidx) {
-    dcel::Face f = _voronoi.faces[fidx];
-    std::vector<dcel::HalfEdge> edges;
-    _voronoi.getOuterComponents(f, edges);
-
-    dcel::Point p;
     double sumx = 0.0;
     double sumy = 0.0;
-    for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
-        p = _voronoi.origin(edges[eidx]).position;
+    dcel::Point p;
+    for (unsigned int i = 0; i < _faceVertices[fidx].size(); i++) {
+        p = _voronoi.getVertex(_faceVertices[fidx][i]).position;
         sumx += p.x;
         sumy += p.y;
     }
 
-    return dcel::Point(sumx / edges.size(), 
-                       sumy / edges.size());
+    return dcel::Point(sumx / _faceVertices[fidx].size(), 
+                       sumy / _faceVertices[fidx].size());
 }
 
 bool gen::MapGenerator::_isEdgeInMap(dcel::HalfEdge &h) {
@@ -513,13 +558,8 @@ void gen::MapGenerator::_fillDepressions() {
         finalHeightMap.set(v, _heightMap(v));
     }
 
-    std::vector<std::vector<int> > neighbours(_heightMap.size(), std::vector<int>());
-    for (unsigned int i = 0; i < neighbours.size(); i++) {
-        neighbours[i].reserve(3);
-        _vertexMap.getNeighbourIndices(_vertexMap.vertices[i], neighbours[i]);
-    }
-
     double eps = 1e-5;
+    std::vector<int> *neighbours;
     for (;;) {
         bool heightUpdated = false;
         for (unsigned int i = 0; i < _heightMap.size(); i++) {
@@ -527,8 +567,9 @@ void gen::MapGenerator::_fillDepressions() {
                 continue;
             }
 
-            for (unsigned int nidx = 0; nidx < neighbours[i].size(); nidx++) {
-                double nval = finalHeightMap(neighbours[i][nidx]);
+            neighbours = _neighbourMap.getPointer(i);
+            for (unsigned int nidx = 0; nidx < neighbours->size(); nidx++) {
+                double nval = finalHeightMap(neighbours->at(nidx));
                 if (_heightMap(i) >= nval + eps) {
                     finalHeightMap.set(i, _heightMap(i));
                     heightUpdated = true;
@@ -553,16 +594,15 @@ void gen::MapGenerator::_fillDepressions() {
 
 void gen::MapGenerator::_calculateFlowMap(NodeMap<int> &flowMap) {
     dcel::Vertex v, n;
-    VertexList nbs;
+    std::vector<int> *nbs;
     for (unsigned int i = 0; i < _vertexMap.interior.size(); i++) {
         v = _vertexMap.interior[i];
 
-        nbs.clear();
-        _vertexMap.getNeighbours(v, nbs);
+        nbs = _neighbourMap.getPointer(v);
         dcel::Vertex minVertex;
         double minHeight = _heightMap(v);
-        for (unsigned int nidx = 0; nidx < nbs.size(); nidx++) {
-            n = nbs[nidx];
+        for (unsigned int nidx = 0; nidx < nbs->size(); nidx++) {
+            n = _vertexMap.vertices[nbs->at(nidx)];
             if (!_vertexMap.isVertex(n)) {
                 continue;
             }
@@ -673,9 +713,6 @@ void gen::MapGenerator::_getContourDrawData(std::vector<std::vector<double> > &d
 }
 
 void gen::MapGenerator::_getContourPaths(std::vector<VertexList> &paths) {
-    std::vector<bool> isLandFace;
-    _getLandFaces(isLandFace);
-
     std::vector<int> adjacentEdgeCounts(_vertexMap.vertices.size(), 0);
     std::vector<bool> isEdgeVisited(_voronoi.edges.size(), false);
     dcel::HalfEdge h;
@@ -686,7 +723,7 @@ void gen::MapGenerator::_getContourPaths(std::vector<VertexList> &paths) {
             continue; 
         }
 
-        if (!_isContourEdge(h, isLandFace)) { 
+        if (!_isContourEdge(h)) { 
             continue; 
         }
 
@@ -719,8 +756,7 @@ void gen::MapGenerator::_getContourPaths(std::vector<VertexList> &paths) {
         }
 
         VertexList path;
-        _getContourPath(i, isContourVertex, isEndVertex, isLandFace,
-                           isVertexInContour, path);
+        _getContourPath(i, isContourVertex, isEndVertex, isVertexInContour, path);
         paths.push_back(path);
     }
 
@@ -730,10 +766,22 @@ void gen::MapGenerator::_getContourPaths(std::vector<VertexList> &paths) {
         }
 
         VertexList path;
-        _getContourPath(i, isContourVertex, isEndVertex, isLandFace,
-                           isVertexInContour, path);
+        _getContourPath(i, isContourVertex, isEndVertex, isVertexInContour, path);
         paths.push_back(path);
     }
+}
+
+bool gen::MapGenerator::_isLandFace(int fidx) {
+    if (!_isLandFaceTableInitialized) {
+        _initializeLandFaceTable();
+    }
+
+    return _isLandFaceTable[fidx];
+}
+
+void gen::MapGenerator::_initializeLandFaceTable() {
+    _getLandFaces(_isLandFaceTable);
+    _isLandFaceTableInitialized = true;
 }
 
 void gen::MapGenerator::_getLandFaces(std::vector<bool> &isLandFace) {
@@ -750,27 +798,10 @@ void gen::MapGenerator::_getLandFaces(std::vector<bool> &isLandFace) {
 }
 
 void gen::MapGenerator::_getFaceHeights(std::vector<double> &faceHeights) {
-    faceHeights.clear();
-    faceHeights.reserve(_voronoi.faces.size());
-
-    dcel::Face f;
-    dcel::Vertex v;
-    std::vector<dcel::HalfEdge> edges;
-    for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
-        f = _voronoi.faces[i];
-
-        edges.clear();
-        _voronoi.getOuterComponents(f, edges);
-
-        double sum = 0.0;
-        for (unsigned int eidx = 0; eidx < edges.size(); eidx++) {
-            v = _voronoi.origin(edges[eidx]);
-            if (_heightMap.isNode(v)) {
-                sum += _heightMap(v);
-            }
-        }
-        double avg = sum / edges.size();
-        faceHeights.push_back(avg);
+    std::vector<double> faceValues = _computeFaceValues(_heightMap);
+    faceHeights.reserve(faceValues.size());
+    for (unsigned int i = 0; i < faceValues.size(); i++) {
+        faceHeights.push_back(faceValues[i]);
     }
 }
 
@@ -812,19 +843,14 @@ void gen::MapGenerator::_getConnectedFaces(int seed,
     queue.push_back(seed);
     isFaceProcessed[seed] = true;
 
-    dcel::HalfEdge h;
-    std::vector<dcel::HalfEdge> outerComponents;
     while (!queue.empty()) {
         int fidx = queue.back();
         queue.pop_back();
 
         bool faceType = isLandFace[fidx];
-        outerComponents.clear();
-        _voronoi.getOuterComponents(_voronoi.faces[fidx], outerComponents);
-        for (unsigned int nidx = 0; nidx < outerComponents.size(); nidx++) {
-            h = _voronoi.twin(outerComponents[nidx]);
-            int nfidx = h.incidentFace.ref;
-            if ((nfidx != -1) && (isLandFace[nfidx] == faceType) && !isFaceProcessed[nfidx]) {
+        for (unsigned int nidx = 0; nidx < _faceNeighbours[fidx].size(); nidx++) {
+            int nfidx = _faceNeighbours[fidx][nidx];
+            if ((isLandFace[nfidx] == faceType) && !isFaceProcessed[nfidx]) {
                 queue.push_back(nfidx);
                 isFaceProcessed[nfidx] = true;
             }
@@ -835,16 +861,14 @@ void gen::MapGenerator::_getConnectedFaces(int seed,
 }
 
 
-bool gen::MapGenerator::_isContourEdge(dcel::HalfEdge &h, 
-                                       std::vector<bool> &isLandFace) {
+bool gen::MapGenerator::_isContourEdge(dcel::HalfEdge &h) {
     dcel::Face f1 = _voronoi.incidentFace(h);
     dcel::Face f2 = _voronoi.incidentFace(_voronoi.twin(h));
-    return (isLandFace[f1.id.ref] && !isLandFace[f2.id.ref]) ||
-           (isLandFace[f2.id.ref] && !isLandFace[f1.id.ref]);
+    return (_isLandFace(f1.id.ref) && !_isLandFace(f2.id.ref)) ||
+           (_isLandFace(f2.id.ref) && !_isLandFace(f1.id.ref));
 }
 
-bool gen::MapGenerator::_isContourEdge(dcel::Vertex &v1, dcel::Vertex &v2, 
-                                       std::vector<bool> &isLandFace) {
+bool gen::MapGenerator::_isContourEdge(dcel::Vertex &v1, dcel::Vertex &v2) {
     std::vector<dcel::HalfEdge> edges;
     edges.reserve(3);
     _voronoi.getIncidentEdges(v1, edges);
@@ -855,7 +879,7 @@ bool gen::MapGenerator::_isContourEdge(dcel::Vertex &v1, dcel::Vertex &v2,
         h = edges[i];
         v = _voronoi.origin(_voronoi.twin(h));
         if (v.id.ref == v2.id.ref) {
-            return _isContourEdge(h, isLandFace);
+            return _isContourEdge(h);
         }
     }
 
@@ -864,25 +888,23 @@ bool gen::MapGenerator::_isContourEdge(dcel::Vertex &v1, dcel::Vertex &v2,
 
 void gen::MapGenerator::_getContourPath(int seed, std::vector<bool> &isContourVertex, 
                                                   std::vector<bool> &isEndVertex, 
-                                                  std::vector<bool> &isLandFace,
                                                   std::vector<bool> &isVertexInContour, 
                                                   VertexList &path) {
     dcel::Vertex v = _vertexMap.vertices[seed];
     dcel::Vertex lastVertex = v;
 
-    std::vector<dcel::Vertex> nbs;
+    std::vector<int> *nbs;
     for (;;) {
         path.push_back(v);
         isVertexInContour[_vertexMap.getVertexIndex(v)] = true;
         
-        nbs.clear();
-        _vertexMap.getNeighbours(v, nbs);
+        nbs = _neighbourMap.getPointer(v);
         bool isFound = false;
-        for (unsigned int i = 0; i < nbs.size(); i++) {
-            dcel::Vertex n = nbs[i];
+        for (unsigned int i = 0; i < nbs->size(); i++) {
+            dcel::Vertex n = _vertexMap.vertices[nbs->at(i)];
             int nidx = _vertexMap.getVertexIndex(n);
             if (n.id.ref != lastVertex.id.ref && isContourVertex[nidx] && 
-                    _isContourEdge(v, n, isLandFace)) {
+                    _isContourEdge(v, n)) {
                 lastVertex = v;
                 v = n;
                 isFound = true;
@@ -973,14 +995,11 @@ void gen::MapGenerator::_getRiverPaths(std::vector<VertexList> &riverPaths) {
 void gen::MapGenerator::_getRiverVertices(VertexList &vertices) {
     std::vector<bool> isVertexAdded(_vertexMap.vertices.size(), false);
 
-    std::vector<bool> isLandFace;
-    _getLandFaces(isLandFace);
-
     dcel::Vertex v;
     VertexList pathVertices;
     for (unsigned int i = 0; i < _vertexMap.vertices.size(); i++) {
         v = _vertexMap.vertices[i];
-        if (_fluxMap(v) < _riverFluxThreshold || _isCoastVertex(i, isLandFace)) {
+        if (_fluxMap(v) < _riverFluxThreshold || _isCoastVertex(i)) {
             continue;
         }
 
@@ -988,10 +1007,10 @@ void gen::MapGenerator::_getRiverVertices(VertexList &vertices) {
         pathVertices.clear();
         while (next != -1) {
             pathVertices.push_back(_vertexMap.vertices[next]);
-            if (_isCoastVertex(next, isLandFace)) { 
+            if (_isCoastVertex(next)) { 
                 break; 
             }
-            if (!_isLandVertex(next, isLandFace)) { 
+            if (!_isLandVertex(next)) { 
                 pathVertices.clear();
                 break; 
             }
@@ -1010,13 +1029,13 @@ void gen::MapGenerator::_getRiverVertices(VertexList &vertices) {
     }
 }
 
-bool gen::MapGenerator::_isLandVertex(int vidx, std::vector<bool> &isLandFace) {
+bool gen::MapGenerator::_isLandVertex(int vidx) {
     std::vector<dcel::Face> faces;
     faces.reserve(6);
     _voronoi.getIncidentFaces(_vertexMap.vertices[vidx], faces);
 
     for (unsigned int i = 0; i < faces.size(); i++) {
-        if (isLandFace[faces[i].id.ref]) {
+        if (_isLandFace(faces[i].id.ref)) {
             return true;
         }
     }
@@ -1024,7 +1043,7 @@ bool gen::MapGenerator::_isLandVertex(int vidx, std::vector<bool> &isLandFace) {
     return false;
 }
 
-bool gen::MapGenerator::_isCoastVertex(int vidx, std::vector<bool> &isLandFace) {
+bool gen::MapGenerator::_isCoastVertex(int vidx) {
     std::vector<dcel::Face> faces;
     faces.reserve(6);
     _voronoi.getIncidentFaces(_vertexMap.vertices[vidx], faces);
@@ -1032,7 +1051,7 @@ bool gen::MapGenerator::_isCoastVertex(int vidx, std::vector<bool> &isLandFace) 
     bool hasLand = false;
     bool hasSea = false;
     for (unsigned int i = 0; i < faces.size(); i++) {
-        if (isLandFace[faces[i].id.ref]) {
+        if (_isLandFace(faces[i].id.ref)) {
             hasLand = true;
         } else {
             hasSea = true;
@@ -1137,12 +1156,9 @@ void gen::MapGenerator::_getSlopeSegments(std::vector<Segment> &segments) {
     std::vector<double> nearSlopes = _computeFaceValues(nearSlopeMap);
     std::vector<dcel::Point> facePositions = _computeFacePositions();
 
-    std::vector<bool> isLandFace;
-    _getLandFaces(isLandFace);
-
     for (unsigned int i = 0; i < faceSlopes.size(); i++) {
         double slope = faceSlopes[i];
-        if (!isLandFace[i] || fabs(slope) < _minSlopeThreshold) {
+        if (!_isLandFace(i) || fabs(slope) < _minSlopeThreshold) {
             continue;
         }
 
@@ -1153,8 +1169,8 @@ void gen::MapGenerator::_getSlopeSegments(std::vector<Segment> &segments) {
         double angle = _minSlopeAngle + factor * (_maxSlopeAngle - _minSlopeAngle);
         angle = slope < 0 ? angle : -angle;
 
-        double dirx =  cos(angle);
-        double diry =  sin(angle);
+        double dirx = cos(angle);
+        double diry = sin(angle);
         
         double minlength = _minSlopeLength*_resolution;
         double maxlength = _maxSlopeLength*_resolution;
@@ -1210,25 +1226,22 @@ double gen::MapGenerator::_calculateVerticalSlope(int i) {
 }
 
 void gen::MapGenerator::_calculateVertexNormal(int vidx, 
-                                                 double *nx, double *ny, double *nz) {
-    dcel::Vertex v = _vertexMap.vertices[vidx];
-    VertexList nbs;
-    nbs.reserve(3);
-    _vertexMap.getNeighbours(v, nbs);
-    if (nbs.size() != 3) {
+                                               double *nx, double *ny, double *nz) {
+    std::vector<int> *nbs = _neighbourMap.getPointer(vidx);
+    if (nbs->size() != 3) {
         return;
     }
 
-    dcel::Point p0 = nbs[0].position;
-    dcel::Point p1 = nbs[1].position;
-    dcel::Point p2 = nbs[2].position;
+    dcel::Point p0 = _vertexMap.vertices[nbs->at(0)].position;
+    dcel::Point p1 = _vertexMap.vertices[nbs->at(1)].position;
+    dcel::Point p2 = _vertexMap.vertices[ nbs->at(2)].position;
 
     double v0x = p1.x - p0.x;
     double v0y = p1.y - p0.y;
-    double v0z = _heightMap(nbs[1]) - _heightMap(nbs[0]);
+    double v0z = _heightMap(nbs->at(1)) - _heightMap(nbs->at(0));
     double v1x = p2.x - p0.x;
     double v1y = p2.y - p0.y;
-    double v1z = _heightMap(nbs[2]) - _heightMap(nbs[0]);
+    double v1z = _heightMap(nbs->at(2)) - _heightMap(nbs->at(0));
 
     double vnx = v0y*v1z - v0z*v1y;
     double vny = v0z*v1x - v0x*v1z;
@@ -1292,15 +1305,12 @@ void gen::MapGenerator::_getCityScores(NodeMap<double> &cityScores) {
     NodeMap<double> fluxMap = _fluxMap;
     fluxMap.relax();
 
-    std::vector<bool> isLandFace;
-    _getLandFaces(isLandFace);
-
     double neginf = -1e2;
     double eps = 1e-6;
     dcel::Point p;
     for (unsigned int i = 0; i < cityScores.size(); i++) {
         double score = 0.0;
-        if (!_isLandVertex(i, isLandFace) || _isCoastVertex(i, isLandFace)) {
+        if (!_isLandVertex(i) || _isCoastVertex(i)) {
             score += neginf;
         }
 
@@ -1346,9 +1356,7 @@ double gen::MapGenerator::_pointToEdgeDistance(dcel::Point p) {
 }
 
 void gen::MapGenerator::_updateCityMovementCost(City &city) {
-    std::vector<bool> isLand;
     std::vector<double> faceHeights;
-    _getLandFaces(isLand);
     _getFaceHeights(faceHeights);
     std::vector<double> faceFlux = _computeFaceValues(_fluxMap);
     std::vector<dcel::Point> facePositions = _computeFacePositions();
@@ -1365,35 +1373,30 @@ void gen::MapGenerator::_updateCityMovementCost(City &city) {
     std::queue<int> queue;
     queue.push(rootid);
 
-    std::vector<dcel::HalfEdge> edges;
-    dcel::HalfEdge h;
-    dcel::Face f;
     while (!queue.empty()) {
         int fidx = queue.front();
         queue.pop();
 
-        edges.clear();
-        _voronoi.getOuterComponents(_voronoi.faces[fidx], edges);
-        for (unsigned int hidx = 0; hidx < edges.size(); hidx++) {
-            int nidx = _voronoi.incidentFace(_voronoi.twin(edges[hidx])).id.ref;
+        for (unsigned int idx = 0; idx < _faceNeighbours[fidx].size(); idx++) {
+            int nidx = _faceNeighbours[fidx][idx];
             if (!isFaceInMap[nidx] || movementCosts[nidx] != inf) {
                 continue;
             }
 
             double cost = 0.0;
             double hdist = _getPointDistance(facePositions[nidx], facePositions[fidx]);
-            double hcost = isLand[nidx] ? _landDistanceCost : _seaDistanceCost;
+            double hcost = _isLandFace(nidx) ? _landDistanceCost : _seaDistanceCost;
             cost += hcost * hdist;
 
-            if (isLand[nidx]) {
+            if (_isLandFace(nidx)) {
                 double udist = faceHeights[nidx] - faceHeights[fidx];
                 double ucost = udist > 0.0 ? _uphillCost : _downhillCost;
                 cost += (udist / hdist) * (udist / hdist) * ucost;
                 cost += sqrt(faceFlux[nidx]) * _fluxCost;
             }
 
-            if ((_isLand(fidx) && !_isLand(nidx)) || 
-                (_isLand(nidx) && !_isLand(fidx))) {
+            if ((_isLandFace(fidx) && !_isLandFace(nidx)) || 
+                (_isLandFace(nidx) && !_isLandFace(fidx))) {
                 cost += _landTransitionCost;
             }
 
@@ -1440,9 +1443,6 @@ void gen::MapGenerator::_getTerritoryBorders(std::vector<VertexList> &borders) {
 }
 
 void gen::MapGenerator::_getFaceTerritories(std::vector<int> &faceTerritories) {
-    std::vector<bool> isLandFace;
-    _getLandFaces(isLandFace);
-
     std::vector<dcel::Point> facePositions = _computeFacePositions();
     std::vector<bool> isFaceInMap(_voronoi.faces.size(), false);
     for (unsigned int i = 0; i < _voronoi.faces.size(); i++) {
@@ -1454,7 +1454,7 @@ void gen::MapGenerator::_getFaceTerritories(std::vector<int> &faceTerritories) {
             continue;
         }
 
-        if (!isLandFace[i]) {
+        if (!_isLandFace(i)) {
             continue;
         }
 
@@ -1492,17 +1492,14 @@ void gen::MapGenerator::_smoothTerritoryBoundaries(
                             std::vector<int> &faceTerritories) {
     std::vector<int> tempFaceTerritories = faceTerritories;
     std::vector<int> neighbourCounts(_cities.size(), 0);
-    std::vector<dcel::HalfEdge> edges;
     for (unsigned int fidx = 0; fidx < faceTerritories.size(); fidx++) {
         if (faceTerritories[fidx] == -1) {
             continue;
         }
 
-        edges.clear();
-        _voronoi.getOuterComponents(_voronoi.faces[fidx], edges);
         std::fill(neighbourCounts.begin(), neighbourCounts.end(), 0);
-        for (unsigned int hidx = 0; hidx < edges.size(); hidx++) {
-            int nidx = _voronoi.incidentFace(_voronoi.twin(edges[hidx])).id.ref;
+        for (unsigned int idx = 0; idx < _faceNeighbours[fidx].size(); idx++) {
+            int nidx = _faceNeighbours[fidx][idx];
             if (faceTerritories[nidx] == -1) {
                 continue;
             }
@@ -1551,15 +1548,12 @@ void gen::MapGenerator::_getConnectedTerritory(int fidx,
     queue.push_back(fidx);
     isFaceProcessed[fidx] = true;
 
-    std::vector<dcel::HalfEdge> edges;
     while (!queue.empty()) {
         fidx = queue.back();
         queue.pop_back();
 
-        edges.clear();
-        _voronoi.getOuterComponents(_voronoi.faces[fidx], edges);
-        for (unsigned int hidx = 0; hidx < edges.size(); hidx++) {
-            int nidx = _voronoi.incidentFace(_voronoi.twin(edges[hidx])).id.ref;
+        for (unsigned int idx = 0; idx < _faceNeighbours[fidx].size(); idx++) {
+            int nidx = _faceNeighbours[fidx][idx];
             if (faceTerritories[nidx] == -1) {
                 continue;
             }
@@ -1610,14 +1604,11 @@ int gen::MapGenerator::_getTerritoryOwner(std::vector<int> &territory,
     }
 
     std::vector<int> cityNeighbourCounts(_cities.size(), 0);
-    std::vector<dcel::HalfEdge> edges;
     for (unsigned int i = 0; i < territory.size(); i++) {
         int fidx = territory[i];
 
-        edges.clear();
-        _voronoi.getOuterComponents(_voronoi.faces[fidx], edges);
-        for (unsigned int hidx = 0; hidx < edges.size(); hidx++) {
-            int nidx = _voronoi.incidentFace(_voronoi.twin(edges[hidx])).id.ref;
+        for (unsigned int idx = 0; idx < _faceNeighbours[fidx].size(); idx++) {
+            int nidx = _faceNeighbours[fidx][idx];
             if (faceTerritories[nidx] == -1 || isFaceProcessed[nidx]) {
                 continue;
             }
@@ -1744,16 +1735,15 @@ void gen::MapGenerator::_getBorderPath(int vidx,
     dcel::Vertex v = _vertexMap.vertices[vidx];
     dcel::Vertex lastVertex = v;
 
-    std::vector<dcel::Vertex> nbs;
+    std::vector<int> *nbs;
     for (;;) {
         path.push_back(v);
         isVertexProcessed[_vertexMap.getVertexIndex(v)] = true;
         
-        nbs.clear();
-        _vertexMap.getNeighbours(v, nbs);
+        nbs = _neighbourMap.getPointer(v);
         bool isFound = false;
-        for (unsigned int i = 0; i < nbs.size(); i++) {
-            dcel::Vertex n = nbs[i];
+        for (unsigned int i = 0; i < nbs->size(); i++) {
+            dcel::Vertex n = _vertexMap.vertices[nbs->at(i)];
             int nidx = _vertexMap.getVertexIndex(n);
             if (n.id.ref != lastVertex.id.ref && 
                             _isBorderEdge(v, n, faceTerritories) && 
@@ -1766,8 +1756,8 @@ void gen::MapGenerator::_getBorderPath(int vidx,
         }
 
         if (!isFound) {
-            for (unsigned int i = 0; i < nbs.size(); i++) {
-                dcel::Vertex n = nbs[i];
+            for (unsigned int i = 0; i < nbs->size(); i++) {
+                dcel::Vertex n = _vertexMap.vertices[nbs->at(i)];;
                 int nidx = _vertexMap.getVertexIndex(n);
                 if (isEndVertex[nidx]) {
                     path.push_back(n);

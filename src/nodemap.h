@@ -69,6 +69,21 @@ public:
         return _nodes[idx];
     }
 
+    T* getPointer(int idx) {
+        if (!_isInRange(idx)) {
+            throw std::range_error("Index out of range:" + idx);
+        }
+        return &_nodes[idx];
+    }
+
+    T* getPointer(dcel::Vertex v) {
+        int idx = getNodeIndex(v);
+        if (idx == -1) {
+            throw std::range_error("Vertex is not in NodeMap.");
+        }
+        return &_nodes[idx];
+    }
+
     void set(int idx, T val) {
         if (!_isInRange(idx)) {
             throw std::range_error("Index out of range:" + idx);

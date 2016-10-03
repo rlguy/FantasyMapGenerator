@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <iostream>
+#include <sstream>
 
 #include "mapgenerator.h"
 
@@ -21,19 +22,25 @@ dcel::Point randomDirection() {
 }
 
 int main() {
+
     auto seed = time(NULL);
-    std::cout << "SEED " << (unsigned int)seed << std::endl;
     srand(seed);
+    for (int i = 0; i < 1000; i++) { rand(); }
+    std::cout << "SEED " << (unsigned int)seed << std::endl;
 
     Extents2d extents(0, 0, 1.7777*20.0, 20.0);
-    gen::MapGenerator map(extents, 0.09);
+    gen::MapGenerator map(extents, 0.07);
     map.initialize();
+   
+    double pad = 5.0;
+    Extents2d expandedExtents(extents.minx - pad, extents.miny - pad,
+                              extents.maxx + pad, extents.maxy + pad);
     
-    int n = randomDouble(60, 120);
+    int n = randomDouble(100, 250);
     double minr = 1.0;
-    double maxr = 6.0;
+    double maxr = 8.0;
     for (int i = 0; i < n; i++) {
-        dcel::Point p = randomPoint(extents);
+        dcel::Point p = randomPoint(expandedExtents);
         double r = randomDouble(minr, maxr);
         double strength = randomDouble(0.5, 1.5);
         if (randomDouble(0, 1) > 0.5) {
@@ -44,13 +51,13 @@ int main() {
     }
 
     if (randomDouble(0, 1) > 0.5) {
-        dcel::Point p = randomPoint(extents);
+        dcel::Point p = randomPoint(expandedExtents);
         double r = randomDouble(6.0, 12.0);
         double strength = randomDouble(1.0, 3.0);
         map.addCone(p.x, p.y, r, strength);
     }
 
-    if (randomDouble(0, 1) > 0.5) {
+    if (randomDouble(0, 1) > 0.1) {
         dcel::Point dir = randomDirection();
         dcel::Point lp = randomPoint(extents);
         double slopewidth = randomDouble(0.5, 5.0);
@@ -67,19 +74,21 @@ int main() {
     if (randomDouble(0, 1) > 0.5) {
         map.relax();
     }
-
-    map.setSeaLevelToMedian();
+  
     for (int i = 0; i < 3; i++) {
-        double e = randomDouble(0.05, 0.12);
-        map.erode(e);
+        map.erode(randomDouble(0.05, 0.12));
     }
     map.setSeaLevelToMedian();
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < (int)randomDouble(3, 7); i++) {
         map.addCity();
     }
 
-    map.outputDrawData("output.json");
+    for (int i = 0; i < (int)randomDouble(8, 25); i++) {
+        map.addTown();
+    }
 
+    map.outputDrawData("output.json");
+    
     return 0;
 }

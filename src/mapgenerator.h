@@ -118,6 +118,12 @@ private:
         LabelOffset(dcel::Point p, double s) : offset(p), score(s) {}
     };
 
+    void _initializeVoronoiData();
+    void _initializeMapData();
+    void _initializeNeighbourMap();
+    void _initializeFaceNeighbours();
+    void _initializeFaceVertices();
+    void _initializeFaceEdges();
     jsoncons::json _getExtentsJSON();
     void _outputVertices(std::vector<dcel::Vertex> &verts, 
                          std::string filename);
@@ -138,27 +144,27 @@ private:
 
     void _getContourDrawData(std::vector<std::vector<double> > &data);
     void _getContourPaths(std::vector<VertexList> &paths);
+    bool _isLandFace(int fidx);
     void _getLandFaces(std::vector<bool> &isLandFace);
     void _getFaceHeights(std::vector<double> &faceHeights);
     bool _isLand(double isolevel);
+    void _initializeLandFaceTable();
     void _cleanupLandFaces(std::vector<bool> &isLandFace);
     void _getConnectedFaces(int seed, std::vector<bool> &isLandFace,
                             std::vector<bool> &isFaceProcessed,
                             std::vector<int> &faces);
-    bool _isContourEdge(dcel::HalfEdge &h, std::vector<bool> &isLandFace);
-    bool _isContourEdge(dcel::Vertex &v1, dcel::Vertex &v2, 
-                        std::vector<bool> &isLandFace);
+    bool _isContourEdge(dcel::HalfEdge &h);
+    bool _isContourEdge(dcel::Vertex &v1, dcel::Vertex &v2);
     void _getContourPath(int seed, std::vector<bool> &isContourVertex, 
-                                   std::vector<bool> &isEndVertex, 
-                                   std::vector<bool> &isLandFace,
+                                   std::vector<bool> &isEndVertex,
                                    std::vector<bool> &isVertexInContour, 
                                    VertexList &path);
 
     void _getRiverDrawData(std::vector<std::vector<double> > &data);
     void _getRiverPaths(std::vector<VertexList> &paths);
     void _getRiverVertices(VertexList &vertices);
-    bool _isLandVertex(int vidx, std::vector<bool> &isLandFace);
-    bool _isCoastVertex(int vidx, std::vector<bool> &isLandFace);
+    bool _isLandVertex(int vidx);
+    bool _isCoastVertex(int vidx);
     void _getFixedRiverVertices(VertexList &riverVertices, 
                                 VertexList &fixedVertices);
     VertexList _smoothPath(VertexList &path,
@@ -278,15 +284,26 @@ private:
     int _imgwidth;
     int _imgheight;
     int _defaultImageHeight = 1080;
+    double _defaultResolution = 0.1;
+    double _defaultExtentsWidth = 20.0*1.7777;
+    double _defaultExtentsHeight = 20.0;
 
     dcel::DCEL _voronoi;
     VertexMap _vertexMap;
+    NodeMap<std::vector<int> > _neighbourMap;
+    std::vector<std::vector<int> > _faceNeighbours;
+    std::vector<std::vector<int> > _faceVertices;
+    std::vector<std::vector<int> > _faceEdges;
     NodeMap<double> _heightMap;
     NodeMap<double> _fluxMap;
     NodeMap<int> _flowMap;
     bool _isInitialized = false;
 
+    std::vector<bool> _isLandFaceTable;
+    bool _isLandFaceTableInitialized = false;
+
     double _samplePadFactor = 3.5;
+    int _poissonSamplerKValue = 25;
     double _fluxCapPercentile = 0.995;
     double _maxErosionRate = 50.0;
     double _erosionRiverFactor = 500.0;
@@ -318,7 +335,7 @@ private:
     double _uphillCost = 0.1;
     double _downhillCost = 1.0;
     double _fluxCost = 0.8;
-    double _landTransitionCost = 100.0;
+    double _landTransitionCost = 0.0;
 
     int _numTerritoryBorderSmoothingInterations = 3;
     double _territoryBorderSmoothingFactor = 0.5;
