@@ -2,6 +2,8 @@
 
 This program is an implementation of a fantasy map generator based on the methods described in Martin O'Leary's "Generating fantasy map" notes (https://mewo2.com/notes/terrain/).
 
+[![alt tag](http://rlguy.com/map_generation/images/example_small.jpg)](http://rlguy.com/map_generation/images/example_large.jpg)
+
 # Progress
 
 ## Generating Irregular Grids
@@ -103,3 +105,30 @@ Area label candidates are generated within territory boundaries. The calculated 
 The number of area label candidates is then narrowed down by selecting only the candidates with the best scores.
 
 ![alt tag](http://rlguy.com/map_generation/images/area_label_candidates_refined.jpg)
+
+After all candidates for the marker and area labels have been generated, the final label candidates are selected by running the following algorithm: 
+
+```
+1. Initialize the label configuration by selecting a candidate randomly for each label. 
+2. Initialize the "temperature" T to an initial high value.
+3. Repeat until the rate of improvement falls below some threshold:
+  a) Decrease T according to an annealing schedule.
+  b) Chose a label randomly and randomly select a new candidate.
+  c) Compute ΔE, the change in label configuration score caused by selecting a new label. candidate.
+  d) If the new labeling is worse, undo the candidate change with a probability P = 1.0 - exp(ΔE/T).
+```
+The score of a label configuration is calculated by averaging the base scores of the selected candidates and adding an additional penalty for each set of overlapping candidates.
+
+The initial high value of the temperature T is set to 1/log(3). This value is chosen so that P evaluates to 2/3 when ΔE is 1.
+
+The loop in step three is terminated when no successful label repositionings are made after 20\*n consecutive attempts, where n is the number of labels, or after some maximum number of temperature changes.
+
+The temperature decreases by 10% after 20\*n label repositioning attemps are made, or if 5\*n successful repositioning attemps are made at the same temperature value.
+
+The following set of images show the initial labeling, the labeling halfway through the algorithm, and the final labeling:
+
+![alt tag](http://rlguy.com/map_generation/images/label_placements0.jpg)
+![alt tag](http://rlguy.com/map_generation/images/label_placements1.jpg)
+![alt tag](http://rlguy.com/map_generation/images/label_placements2.jpg)
+
+This section concludes the fantasy map generation process.
