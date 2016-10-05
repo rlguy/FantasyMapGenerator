@@ -280,7 +280,7 @@ void gen::MapGenerator::outputHeightMap(std::string filename) {
     file.close();
 }
 
-void gen::MapGenerator::outputDrawData(std::string filename) {
+std::vector<char> gen::MapGenerator::getDrawData() {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
@@ -309,12 +309,9 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     std::vector<jsoncons::json> labelData;
     _getLabelDrawData(labelData);
 
-    double width = _extents.maxx - _extents.minx;
-    double height = _extents.maxy - _extents.miny;
-    double aspectratio = width / height;
-
     jsoncons::json output;
-    output["aspect_ratio"] = aspectratio;
+    output["image_width"] = _imgwidth;
+    output["image_height"] = _imgheight;
     output["contour"] = contourData;
     output["river"] = riverData;
     output["slope"] = slopeData;
@@ -323,9 +320,11 @@ void gen::MapGenerator::outputDrawData(std::string filename) {
     output["territory"] = territoryData;
     output["label"] = labelData;
 
-    std::ofstream file(filename);
-    file << output;
-    file.close();
+    std::string strout = output.as<std::string>();
+    std::vector<char> charvect(strout.begin(), strout.end());
+    charvect.push_back('\0');
+
+    return charvect;
 }
 
 void gen::MapGenerator::_initializeVoronoiData() {

@@ -1,8 +1,11 @@
+#include <cmath>
+
 #include <stdio.h>
 #include <iostream>
 #include <sstream>
 
 #include "mapgenerator.h"
+#include "render.h"
 
 double randomDouble(double min, double max) {
     return min + (double)rand() / ((double)RAND_MAX / (max - min));
@@ -21,15 +24,35 @@ dcel::Point randomDirection() {
     return dcel::Point(sin(angle), cos(angle));
 }
 
-int main() {
+void outputMap(gen::MapGenerator &map) {
+    std::vector<char> drawdata = map.getDrawData();
+    #ifdef PYTHON_RENDERING_SUPPORTED
+        std::string filename("output.png");
+        gen::render::drawMap(drawdata, filename);
 
-    auto seed = time(NULL);
+        std::cout << "Wrote map to image: " << filename << std::endl;
+    #else
+        std::string filename("output.json");
+        std::ofstream file(filename);
+        file << std::string(drawdata.data());
+        file.close();
+
+        std::cout << "Project build without drawing support. " << 
+                     "Install Python and the Pycairo graphics library " <<
+                     "(http://cairographics.org/pycairo/) to enable drawing " <<
+                     "support." << std::endl;
+        std::cout << "Wrote map draw data to file: " << filename << std::endl;
+    #endif
+}
+
+int main() {
+    time_t seed = time(NULL);
     srand(seed);
     for (int i = 0; i < 1000; i++) { rand(); }
-    std::cout << "SEED " << (unsigned int)seed << std::endl;
+    std::cout << "Generating map with seed value: " << (unsigned int)seed << std::endl;
 
     Extents2d extents(0, 0, 1.7777*20.0, 20.0);
-    gen::MapGenerator map(extents, 0.07);
+    gen::MapGenerator map(extents, 0.08);
     map.initialize();
    
     double pad = 5.0;
@@ -75,8 +98,10 @@ int main() {
         map.relax();
     }
   
-    for (int i = 0; i < 3; i++) {
-        map.erode(randomDouble(0.05, 0.12));
+    int erosionSteps = 3;
+    double erosionAmount = randomDouble(0.3, 0.45);
+    for (int i = 0; i < erosionSteps; i++) {
+        map.erode(erosionAmount / (double)erosionSteps);
     }
     map.setSeaLevelToMedian();
 
@@ -88,7 +113,7 @@ int main() {
         map.addTown();
     }
 
-    map.outputDrawData("output.json");
+    outputMap(map);
     
     return 0;
 }

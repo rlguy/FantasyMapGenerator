@@ -47,7 +47,7 @@ public:
 
     void outputVoronoiDiagram(std::string filename);
     void outputHeightMap(std::string filename);
-    void outputDrawData(std::string filename);
+    std::vector<char> getDrawData();
 
 private:
     typedef std::vector<dcel::Vertex> VertexList;
@@ -314,7 +314,7 @@ private:
     double _isolevel = 0.0;
     double _minIslandFaceThreshold = 35;
 
-    double _minSlopeThreshold = 0.09;
+    double _minSlopeThreshold = 0.07;
     double _minSlope = 0.0;
     double _maxSlope = 0.7;
     double _minSlopeAngle = 0.2;
