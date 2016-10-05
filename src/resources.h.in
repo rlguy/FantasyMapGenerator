@@ -1,0 +1,24 @@
+#ifndef RESOURCES_H
+#define RESOURCES_H
+
+#define RESOURCES_EXECUTABLE_DIRECTORY 	"@RESOURCES_EXECUTABLE_DIRECTORY@"
+#define RESOURCES_FONT_DATA_DIRECTORY 	"@RESOURCES_FONT_DATA_DIRECTORY@"
+#define RESOURCES_CITY_DATA_DIRECTORY 	"@RESOURCES_CITY_DATA_DIRECTORY@"
+#define RESOURCES_FONT_DATA_RESOURCE 	"@RESOURCES_FONT_DATA_RESOURCE@"
+#define RESOURCES_CITY_DATA_RESOURCE 	"@RESOURCES_CITY_DATA_RESOURCE@"
+
+#include <string>
+
+namespace gen{
+namespace resources {
+    
+extern std::string getExecutableDirectory();
+extern std::string getFontDataDirectory();
+extern std::string getCityDataDirectory();
+extern std::string getFontDataResource();
+extern std::string getCityDataResource();
+    
+}
+}
+
+#endif

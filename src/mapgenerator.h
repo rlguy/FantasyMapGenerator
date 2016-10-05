@@ -16,6 +16,7 @@
 #include "nodemap.h"
 #include "fontface.h"
 #include "spatialpointgrid.h"
+#include "resources.h"
 
 #include "jsoncons/json.hpp"
 

@@ -1,6 +1,10 @@
 #include "mapgenerator.h"
 
-gen::MapGenerator::MapGenerator() {
+gen::MapGenerator::MapGenerator() : 
+                                _fontData(gen::resources::getFontDataResource()),
+                                _cityLabelFontFace("Times New Roman"),
+                                _townLabelFontFace("Times New Roman"),
+                                _areaLabelFontFace("Times New Roman") {
     Extents2d defaultExtents(0, 0, _defaultExtentsWidth, _defaultExtentsHeight);
     _extents = defaultExtents;
     _resolution = _defaultResolution;
@@ -15,7 +19,7 @@ gen::MapGenerator::MapGenerator(Extents2d extents, double resolution,
                                 int imgwidth, int imgheight) : 
                                 _extents(extents), _resolution(resolution),
                                 _imgwidth(imgwidth), _imgheight(imgheight),
-                                _fontData("font_data/font_data.json"),
+                                _fontData(gen::resources::getFontDataResource()),
                                 _cityLabelFontFace("Times New Roman"),
                                 _townLabelFontFace("Times New Roman"),
                                 _areaLabelFontFace("Times New Roman") {
@@ -23,7 +27,7 @@ gen::MapGenerator::MapGenerator(Extents2d extents, double resolution,
 
 gen::MapGenerator::MapGenerator(Extents2d extents, double resolution) :
                                 _extents(extents), _resolution(resolution),
-                                _fontData("font_data/font_data.json"),
+                                _fontData(gen::resources::getFontDataResource()),
                                 _cityLabelFontFace("Times New Roman"),
                                 _townLabelFontFace("Times New Roman"),
                                 _areaLabelFontFace("Times New Roman") {
@@ -1883,7 +1887,7 @@ void gen::MapGenerator::_initializeAreaLabel(City &city, std::string &name,
 }
 
 std::vector<std::string> gen::MapGenerator::_getLabelNames(int num) {
-    std::ifstream file("city_data/countrycities.json");
+    std::ifstream file(gen::resources::getCityDataResource());
     std::string jsonstr((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
     jsoncons::json json = jsoncons::json::parse(jsonstr);

@@ -29,6 +29,16 @@ add_library(objects OBJECT ${SOURCES})
 add_executable(map_generation $<TARGET_OBJECTS:objects>)
 target_link_libraries(map_generation ${PYTHON_LIBRARIES})
 
-file(COPY "src/font_data" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "src/city_data" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "src/fontdata" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "src/citydata" DESTINATION ${CMAKE_BINARY_DIR})
 file(COPY "src/render" DESTINATION "${CMAKE_BINARY_DIR}")
+
+set(RESOURCES_EXECUTABLE_DIRECTORY  ${CMAKE_BINARY_DIR})
+set(RESOURCES_FONT_DATA_DIRECTORY   ${CMAKE_BINARY_DIR}/fontdata)
+set(RESOURCES_CITY_DATA_DIRECTORY   ${CMAKE_BINARY_DIR}/citydata)
+set(RESOURCES_FONT_DATA_RESOURCE    ${CMAKE_BINARY_DIR}/fontdata/fontdata.json)
+set(RESOURCES_CITY_DATA_RESOURCE    ${CMAKE_BINARY_DIR}/citydata/countrycities.json)
+configure_file(
+  "${PROJECT_SOURCE_DIR}/src/resources.h.in"
+  "${PROJECT_SOURCE_DIR}/src/resources.h"
+)
