@@ -192,7 +192,7 @@ void gen::MapGenerator::erode(double amount) {
     }
 }
 
-void gen::MapGenerator::addCity() {
+void gen::MapGenerator::addCity(std::string cityName, std::string territoryName) {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
@@ -200,6 +200,8 @@ void gen::MapGenerator::addCity() {
     CityLocation loc = _getCityLocation();
 
     City city;
+    city.cityName = cityName;
+    city.territoryName = territoryName;
     city.position = loc.position;
     city.faceid = loc.faceid;
     _updateCityMovementCost(city);
@@ -207,7 +209,7 @@ void gen::MapGenerator::addCity() {
     _cities.push_back(city);
 }
 
-void gen::MapGenerator::addTown() {
+void gen::MapGenerator::addTown(std::string townName) {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
@@ -215,6 +217,7 @@ void gen::MapGenerator::addTown() {
     CityLocation loc = _getCityLocation();
 
     Town town;
+    town.townName = townName;
     town.position = loc.position;
     town.faceid = loc.faceid;
     _towns.push_back(town);
@@ -1797,65 +1800,46 @@ void gen::MapGenerator::_getLabelDrawData(std::vector<jsoncons::json> &data) {
 }
 
 void gen::MapGenerator::_initializeLabels(std::vector<Label> &labels) {
-    int numMarkers = _cities.size() + _towns.size();
-    int numAreas = _cities.size();
-    int numLabels = numMarkers + numAreas;
-    std::vector<std::string> names = _getLabelNames(numLabels);
-
-    std::vector<std::string> markerNames(names.begin(), names.begin() + numMarkers);
     std::vector<Label> markerLabels;
-    _initializeMarkerLabels(markerNames, markerLabels);
-
-    std::vector<std::string> areaNames(names.begin() + numMarkers, names.end());
-    for (unsigned int i = 0; i < areaNames.size(); i++) {
-        std::transform(areaNames[i].begin(), areaNames[i].end(), 
-                       areaNames[i].begin(), ::toupper);
-    }
-
     std::vector<Label> areaLabels;
-    _initializeAreaLabels(areaNames, areaLabels);
+    _initializeMarkerLabels(markerLabels);
+    _initializeAreaLabels(areaLabels);
 
     labels.insert(labels.end(), markerLabels.begin(), markerLabels.end());
     labels.insert(labels.end(), areaLabels.begin(), areaLabels.end());
 }
 
-void gen::MapGenerator::_initializeMarkerLabels(std::vector<std::string> names, 
-                                                std::vector<Label> &labels) {
+void gen::MapGenerator::_initializeMarkerLabels(std::vector<Label> &labels) {
     _fontData.setFontFace(_cityLabelFontFace, _cityLabelFontSize);
     for (unsigned int i = 0; i < _cities.size(); i++) {
         Label cityLabel;
-        _initializeCityLabel(_cities[i], names.back(), cityLabel);
-        names.pop_back();
+        _initializeCityLabel(_cities[i], cityLabel);
         labels.push_back(cityLabel);
     }
 
     _fontData.setFontFace(_townLabelFontFace, _townLabelFontSize);
     for (unsigned int i = 0; i < _towns.size(); i++) {
         Label townLabel;
-        _initializeTownLabel(_towns[i], names.back(), townLabel);
-        names.pop_back();
+        _initializeTownLabel(_towns[i], townLabel);
         labels.push_back(townLabel);
     }
 
     _initializeMarkerLabelScores(labels);
 }
 
-void gen::MapGenerator::_initializeAreaLabels(std::vector<std::string> names, 
-                                              std::vector<Label> &labels) {
+void gen::MapGenerator::_initializeAreaLabels(std::vector<Label> &labels) {
     _fontData.setFontFace(_areaLabelFontFace, _areaLabelFontSize);
     for (unsigned int i = 0; i < _cities.size(); i++) {
         Label areaLabel;
-        _initializeAreaLabel(_cities[i], names.back(), areaLabel);
-        names.pop_back();
+        _initializeAreaLabel(_cities[i], areaLabel);
         labels.push_back(areaLabel);
     }
 
     _initializeAreaLabelScores(labels);
 }
 
-void gen::MapGenerator::_initializeCityLabel(City &city, std::string &name, 
-                                             Label &label) {
-    label.text = name;
+void gen::MapGenerator::_initializeCityLabel(City &city, Label &label) {
+    label.text = city.cityName;
     label.fontface = _fontData.getFontFace();
     label.fontsize = _fontData.getFontSize();
     label.position = city.position;
@@ -1865,9 +1849,8 @@ void gen::MapGenerator::_initializeCityLabel(City &city, std::string &name,
     label.candidates = _getMarkerLabelCandidates(label, radius);
 }
 
-void gen::MapGenerator::_initializeTownLabel(Town &town, std::string &name, 
-                                             Label &label) {
-    label.text = name;
+void gen::MapGenerator::_initializeTownLabel(Town &town, Label &label) {
+    label.text = town.townName;
     label.fontface = _fontData.getFontFace();
     label.fontsize = _fontData.getFontSize();
     label.position = town.position;
@@ -1877,47 +1860,12 @@ void gen::MapGenerator::_initializeTownLabel(Town &town, std::string &name,
     label.candidates = _getMarkerLabelCandidates(label, radius);
 }
 
-void gen::MapGenerator::_initializeAreaLabel(City &city, std::string &name, 
-                                             Label &label) {
-    label.text = name;
+void gen::MapGenerator::_initializeAreaLabel(City &city, Label &label) {
+    label.text = city.territoryName;
     label.fontface = _fontData.getFontFace();
     label.fontsize = _fontData.getFontSize();
     label.position = city.position;
     label.candidates = _getAreaLabelCandidates(label, city);
-}
-
-std::vector<std::string> gen::MapGenerator::_getLabelNames(int num) {
-    std::ifstream file(gen::resources::getCityDataResource());
-    std::string jsonstr((std::istreambuf_iterator<char>(file)),
-                         std::istreambuf_iterator<char>());
-    jsoncons::json json = jsoncons::json::parse(jsonstr);
-
-    std::vector<std::string> countries;
-    for (const auto& member : json.members()) {
-        countries.push_back(member.name());
-    }
-
-    std::vector<std::string> cities;
-    while ((int)cities.size() < num) {
-        int randidx = rand() % (int)countries.size();
-        std::string country = countries[randidx];
-        for (const auto& member : json[country].elements()) {
-            cities.push_back(member.as<std::string>());
-        }
-    }
-
-    std::string temp;
-    for (int i = cities.size() - 2; i >= 0; i--) {
-        int j = (rand() % (int)(i - 0 + 1));
-        temp = cities[i];
-        cities[i] = cities[j];
-        cities[j] = temp;
-    }
-
-    std::vector<std::string> labelnames;
-    labelnames.insert(labelnames.end(), cities.begin(), cities.begin() + num);
-
-    return labelnames;
 }
 
 std::vector<gen::MapGenerator::LabelCandidate> 

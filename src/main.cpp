@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <sstream>
+#include <random>
 
 #include "mapgenerator.h"
 #include "render.h"
@@ -43,6 +44,40 @@ void outputMap(gen::MapGenerator &map) {
                      "support." << std::endl;
         std::cout << "Wrote map draw data to file: " << filename << std::endl;
     #endif
+}
+
+std::vector<std::string> getLabelNames(int num) {
+    std::ifstream file(gen::resources::getCityDataResource());
+    std::string jsonstr((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    jsoncons::json json = jsoncons::json::parse(jsonstr);
+
+    std::vector<std::string> countries;
+    for (const auto& member : json.members()) {
+        countries.push_back(member.name());
+    }
+
+    std::vector<std::string> cities;
+    while ((int)cities.size() < num) {
+        int randidx = rand() % (int)countries.size();
+        std::string country = countries[randidx];
+        for (const auto& member : json[country].elements()) {
+            cities.push_back(member.as<std::string>());
+        }
+    }
+
+    std::string temp;
+    for (int i = cities.size() - 2; i >= 0; i--) {
+        int j = (rand() % (int)(i - 0 + 1));
+        temp = cities[i];
+        cities[i] = cities[j];
+        cities[j] = temp;
+    }
+
+    std::vector<std::string> labelnames;
+    labelnames.insert(labelnames.end(), cities.begin(), cities.begin() + num);
+
+    return labelnames;
 }
 
 int main() {
@@ -98,19 +133,31 @@ int main() {
         map.relax();
     }
   
-    int erosionSteps = 3;
-    double erosionAmount = randomDouble(0.3, 0.45);
+    int erosionSteps = 15;
+    double erosionAmount = randomDouble(0.2, 0.35);
     for (int i = 0; i < erosionSteps; i++) {
         map.erode(erosionAmount / (double)erosionSteps);
     }
     map.setSeaLevelToMedian();
 
-    for (int i = 0; i < (int)randomDouble(3, 7); i++) {
-        map.addCity();
+    int numCities = (int)randomDouble(3, 7);
+    int numTowns = (int)randomDouble(8, 25);
+    int numLabels = 2*numCities + numTowns;
+    std::vector<std::string> labelNames = getLabelNames(numLabels);
+    for (int i = 0; i < numCities; i++) {
+        std::string cityName = labelNames.back();
+        labelNames.pop_back();
+        std::string territoryName = labelNames.back();
+        labelNames.pop_back();
+        std::transform(territoryName.begin(), territoryName.end(), 
+                       territoryName.begin(), ::toupper);
+        map.addCity(cityName, territoryName);
     }
 
-    for (int i = 0; i < (int)randomDouble(8, 25); i++) {
-        map.addTown();
+    for (int i = 0; i < numTowns; i++) {
+        std::string townName = labelNames.back();
+        labelNames.pop_back();
+        map.addTown(townName);
     }
 
     outputMap(map);

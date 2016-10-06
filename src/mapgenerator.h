@@ -43,8 +43,8 @@ public:
     void erode(double amount);
     void erode();
 
-    void addCity();
-    void addTown();
+    void addCity(std::string cityName, std::string territoryName);
+    void addTown(std::string townName);
 
     void outputVoronoiDiagram(std::string filename);
     void outputHeightMap(std::string filename);
@@ -64,12 +64,15 @@ private:
     };
 
     struct City {
+        std::string cityName;
+        std::string territoryName;
         dcel::Point position;
         int faceid;
         std::vector<double> movementCosts;
     };
 
     struct Town {
+        std::string townName;
         dcel::Point position;
         int faceid;
     };
@@ -219,14 +222,11 @@ private:
 
     void _getLabelDrawData(std::vector<jsoncons::json> &data);
     void _initializeLabels(std::vector<Label> &labels);
-    void _initializeMarkerLabels(std::vector<std::string> names, 
-                                 std::vector<Label> &labels);
-    void _initializeAreaLabels(std::vector<std::string> names, 
-                               std::vector<Label> &labels);
-    void _initializeCityLabel(City &city, std::string &name, Label &label);
-    void _initializeTownLabel(Town &town, std::string &name, Label &label);
-    void _initializeAreaLabel(City &city, std::string &name, Label &label);
-    std::vector<std::string> _getLabelNames(int num);
+    void _initializeMarkerLabels(std::vector<Label> &labels);
+    void _initializeAreaLabels(std::vector<Label> &labels);
+    void _initializeCityLabel(City &city, Label &label);
+    void _initializeTownLabel(Town &town, Label &label);
+    void _initializeAreaLabel(City &city, Label &label);
     std::vector<LabelCandidate> _getMarkerLabelCandidates(Label label, 
                                                           double markerRadius);
     std::vector<LabelCandidate> _getAreaLabelCandidates(Label label,
