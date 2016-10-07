@@ -16,10 +16,10 @@ int gen::SpatialPointGrid::getPointCount(Extents2d extents) {
     temp.maxy -= _offset.y;
 
     double invdx = 1.0 / _dx;
-    int mini = fmax(0, floor(temp.minx * invdx));
-    int minj = fmax(0, floor(temp.miny * invdx));
-    int maxi = fmin(_isize - 1, floor(temp.maxx * invdx));
-    int maxj = fmin(_jsize - 1, floor(temp.maxy * invdx));
+    int mini = (int)fmax(0, floor(temp.minx * invdx));
+    int minj = (int)fmax(0, floor(temp.miny * invdx));
+    int maxi = (int)fmin(_isize - 1, floor(temp.maxx * invdx));
+    int maxj = (int)fmin(_jsize - 1, floor(temp.maxy * invdx));
 
     int count = 0;
     for (int j = minj; j <= maxj; j++) {
@@ -50,6 +50,9 @@ void gen::SpatialPointGrid::_initializeGrid(std::vector<dcel::Point> &points) {
 
 Extents2d gen::SpatialPointGrid::_getPointSetExtents(
                                     std::vector<dcel::Point> &points) {
+    if (points.size() == 0) {
+        return Extents2d(0.0, 0.0, 0.0, 0.0);
+    }
 
     dcel::Point p = points[0];
     Extents2d e(p.x, p.y, p.x, p.y);

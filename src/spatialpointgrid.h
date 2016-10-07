@@ -28,8 +28,8 @@ private:
     Extents2d _extents;
     double _width;
     double _height;
-    double _isize;
-    double _jsize;
+    int _isize;
+    int _jsize;
     dcel::Point _offset;
 
     std::vector<std::vector<dcel::Point> > _grid;

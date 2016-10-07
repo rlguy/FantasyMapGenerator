@@ -1,4 +1,4 @@
-#include <cmath>
+#include "argtable3/argtable3.h"
 
 #include <stdio.h>
 #include <iostream>
@@ -7,6 +7,8 @@
 
 #include "mapgenerator.h"
 #include "render.h"
+#include "config.h"
+#include "stopwatch.h"
 
 double randomDouble(double min, double max) {
     return min + (double)rand() / ((double)RAND_MAX / (max - min));
@@ -26,23 +28,45 @@ dcel::Point randomDirection() {
 }
 
 void outputMap(gen::MapGenerator &map) {
+    gen::config::print("Generating map draw data...");
+    StopWatch timer;
+    timer.start();
     std::vector<char> drawdata = map.getDrawData();
-    #ifdef PYTHON_RENDERING_SUPPORTED
-        std::string filename("output.png");
-        gen::render::drawMap(drawdata, filename);
+    timer.stop();
+    gen::config::print("Finished Generating map draw data in " +
+                       gen::config::toString(timer.getTime()) + " seconds.\n");
 
-        std::cout << "Wrote map to image: " << filename << std::endl;
+    std::string outfile = gen::config::outfile;
+    std::string outfileExt = gen::config::outfileExt;
+    #ifdef PYTHON_RENDERING_SUPPORTED
+        if (outfileExt != std::string(".png")) {
+            outfile += ".png";
+        }
+
+        timer.reset();
+        timer.start();
+        gen::config::print("Drawing map...");
+        gen::render::drawMap(drawdata, outfile);
+        timer.stop();
+        gen::config::print("Finished drawing map in " +
+                           gen::config::toString(timer.getTime()) + " seconds.\n");
+
+        gen::config::print("Wrote map to image: " + outfile);
     #else
-        std::string filename("output.json");
-        std::ofstream file(filename);
+        if (outfileExt != std::string(".json")) {
+            outfile += ".json";
+        }
+
+        std::ofstream file(outfile);
         file << std::string(drawdata.data());
         file.close();
 
-        std::cout << "Project build without drawing support. " << 
-                     "Install Python and the Pycairo graphics library " <<
-                     "(http://cairographics.org/pycairo/) to enable drawing " <<
-                     "support." << std::endl;
-        std::cout << "Wrote map draw data to file: " << filename << std::endl;
+        std::string msg("Project build without drawing support. Install Python "
+                        "and the Pycairo graphics library "
+                        "(http://cairographics.org/pycairo/) to enable drawing "
+                        "support.\nWrote map draw data to file: " + outfile);
+        gen::config::print(msg);
+
     #endif
 }
 
@@ -80,21 +104,13 @@ std::vector<std::string> getLabelNames(int num) {
     return labelnames;
 }
 
-int main() {
-    time_t seed = time(NULL);
-    srand(seed);
-    for (int i = 0; i < 1000; i++) { rand(); }
-    std::cout << "Generating map with seed value: " << (unsigned int)seed << std::endl;
-
-    Extents2d extents(0, 0, 1.7777*20.0, 20.0);
-    gen::MapGenerator map(extents, 0.08);
-    map.initialize();
-   
+void initializeHeightmap(gen::MapGenerator &map) {
     double pad = 5.0;
+    Extents2d extents = map.getExtents();
     Extents2d expandedExtents(extents.minx - pad, extents.miny - pad,
                               extents.maxx + pad, extents.maxy + pad);
     
-    int n = randomDouble(100, 250);
+    int n = (int)randomDouble(100, 250);
     double minr = 1.0;
     double maxr = 8.0;
     for (int i = 0; i < n; i++) {
@@ -132,35 +148,147 @@ int main() {
     if (randomDouble(0, 1) > 0.5) {
         map.relax();
     }
-  
-    int erosionSteps = 15;
-    double erosionAmount = randomDouble(0.2, 0.35);
-    for (int i = 0; i < erosionSteps; i++) {
-        map.erode(erosionAmount / (double)erosionSteps);
+}
+
+void erode(gen::MapGenerator &map, double amount, int iterations) {
+    StopWatch timer;
+    std::string msg;
+    for (int i = 0; i < iterations; i++) {
+        timer.reset();
+        timer.start();
+        map.erode(amount / (double)iterations);
+        timer.stop();
+
+        msg = "\tCompleted erosion step " + gen::config::toString(i + 1) + "/" +
+              gen::config::toString(iterations) + " in " +
+              gen::config::toString(timer.getTime()) + " seconds.";
+        gen::config::print(msg);
     }
     map.setSeaLevelToMedian();
+}
+
+void addCities(gen::MapGenerator &map, int numCities, 
+               std::vector<std::string> &labels) {
+    StopWatch timer;
+    std::string msg;
+    for (int i = 0; i < numCities; i++) {
+        timer.reset();
+        timer.start();
+        std::string cityName = labels.back();
+        labels.pop_back();
+        std::string territoryNameLowerCase = labels.back();
+        std::string territoryName = territoryNameLowerCase;
+        labels.pop_back();
+        std::transform(territoryName.begin(), territoryName.end(), 
+                       territoryName.begin(), ::toupper);
+        map.addCity(cityName, territoryName);
+        timer.stop();
+
+        msg = "\tAdded city " + gen::config::toString(i+1) + "/" + 
+              gen::config::toString(numCities) + "' to map in " + 
+              gen::config::toString(timer.getTime()) + " seconds" + 
+              " (" + cityName + ", " + territoryNameLowerCase + ").";
+        gen::config::print(msg);
+    }
+}
+
+void addTowns(gen::MapGenerator &map, int numTowns, 
+              std::vector<std::string> &labels) {
+    StopWatch timer;
+    std::string msg;
+    for (int i = 0; i < numTowns; i++) {
+        timer.reset();
+        timer.start();
+        std::string townName = labels.back();
+        labels.pop_back();
+        map.addTown(townName);
+        timer.stop();
+
+        msg = "\tAdded town " + gen::config::toString(i+1) + "/" + 
+              gen::config::toString(numTowns) + "' to map in " +
+              gen::config::toString(timer.getTime()) + " seconds" + " (" + 
+              townName + ").";
+        gen::config::print(msg);
+    }
+}
+
+int main(int argc, char **argv) {
+
+    if (!gen::config::parseOptions(argc, argv)) {
+        return 0;
+    }
+
+    StopWatch totalTimer;
+    totalTimer.start();
+
+    srand(gen::config::seed);
+    for (int i = 0; i < 1000; i++) { rand(); }
+    gen::config::print("Generating map with seed value: " + 
+                       gen::config::toString(gen::config::seed));
+
+    Extents2d extents(0, 0, 1.7777*20.0, 20.0);
+    gen::MapGenerator map(extents, gen::config::resolution);
+
+    gen::config::print("\nInitializing map generator...");
+    StopWatch timer;
+    timer.start();
+    map.initialize();
+    timer.stop();
+    gen::config::print("Finished initializing map generator in " +
+                       gen::config::toString(timer.getTime()) + " seconds.\n");
+   
+
+    gen::config::print("Initializing height map...");
+    timer.reset();
+    timer.start();
+    initializeHeightmap(map);
+    timer.stop();
+    gen::config::print("Finished initializing height map in " +
+                       gen::config::toString(timer.getTime()) + " seconds.\n");
+  
+    int erosionSteps = gen::config::erosionIterations;
+    double erosionAmount = randomDouble(0.2, 0.35);
+    if (gen::config::erosionAmount >= 0.0) {
+        erosionAmount = gen::config::erosionAmount;
+    }
+    gen::config::print("Eroding height map by " +
+                       gen::config::toString(erosionAmount) + " over " + 
+                       gen::config::toString(erosionSteps) + " iterations...");
+    timer.reset();
+    timer.start();
+    erode(map, erosionAmount, erosionSteps);
+    timer.stop();
+    gen::config::print("Finished eroding height map in " +
+                       gen::config::toString(timer.getTime()) + " seconds.\n");
 
     int numCities = (int)randomDouble(3, 7);
     int numTowns = (int)randomDouble(8, 25);
     int numLabels = 2*numCities + numTowns;
     std::vector<std::string> labelNames = getLabelNames(numLabels);
-    for (int i = 0; i < numCities; i++) {
-        std::string cityName = labelNames.back();
-        labelNames.pop_back();
-        std::string territoryName = labelNames.back();
-        labelNames.pop_back();
-        std::transform(territoryName.begin(), territoryName.end(), 
-                       territoryName.begin(), ::toupper);
-        map.addCity(cityName, territoryName);
-    }
 
-    for (int i = 0; i < numTowns; i++) {
-        std::string townName = labelNames.back();
-        labelNames.pop_back();
-        map.addTown(townName);
-    }
+    gen::config::print("Generating " + gen::config::toString(numCities) +
+                       " cities...");
+    timer.reset();
+    timer.start();
+    addCities(map, numCities, labelNames);
+    timer.stop();
+    gen::config::print("Finished generating cities in " +
+                       gen::config::toString(timer.getTime()) + " seconds.\n");
+
+    gen::config::print("Generating " + gen::config::toString(numTowns) +
+                       " towns...");
+    timer.reset();
+    timer.start();
+    addTowns(map, numTowns, labelNames);
+    timer.stop();
+    gen::config::print("Finished generating towns in " +
+                       gen::config::toString(timer.getTime()) + " seconds.\n");
 
     outputMap(map);
+
+    totalTimer.stop();
+    gen::config::print("\nFinished generating map in " + 
+                       gen::config::toString(totalTimer.getTime()) + " seconds.");
     
     return 0;
 }

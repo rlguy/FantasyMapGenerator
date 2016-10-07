@@ -11,14 +11,21 @@
 #include "extents2d.h"
 #include "dcel.h"
 #include "poissondiscsampler.h"
+#include "delaunay.h"
 #include "voronoi.h"
 #include "vertexmap.h"
 #include "nodemap.h"
 #include "fontface.h"
 #include "spatialpointgrid.h"
 #include "resources.h"
+#include "config.h"
+#include "stopwatch.h"
 
 #include "jsoncons/json.hpp"
+
+#if defined(_WIN32)
+    #undef max
+#endif
 
 namespace gen {
 
@@ -49,6 +56,8 @@ public:
     void outputVoronoiDiagram(std::string filename);
     void outputHeightMap(std::string filename);
     std::vector<char> getDrawData();
+
+    Extents2d getExtents();
 
 private:
     typedef std::vector<dcel::Vertex> VertexList;
@@ -314,6 +323,7 @@ private:
     double _riverSmoothingFactor = 0.5;
     double _isolevel = 0.0;
     double _minIslandFaceThreshold = 35;
+    bool _isHeightMapEroded = false;
 
     double _minSlopeThreshold = 0.07;
     double _minSlope = 0.0;

@@ -374,7 +374,7 @@ public:
         {
             init_variant(var);
         }
-        explicit variant(const variant& var, const Allocator& a)
+        explicit variant(const variant& var, const Allocator&)
             : type_(var.type_)
         {
             init_variant(var);

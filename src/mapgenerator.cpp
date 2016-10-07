@@ -190,11 +190,17 @@ void gen::MapGenerator::erode(double amount) {
         double newlevel = currlevel - amount * erosionMap(i);
         _heightMap.set(i, newlevel);
     }
+
+    _isHeightMapEroded = true;
 }
 
 void gen::MapGenerator::addCity(std::string cityName, std::string territoryName) {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
+    }
+
+    if (!_isHeightMapEroded) {
+        erode(0.0);
     }
 
     CityLocation loc = _getCityLocation();
@@ -212,6 +218,10 @@ void gen::MapGenerator::addCity(std::string cityName, std::string territoryName)
 void gen::MapGenerator::addTown(std::string townName) {
     if (!_isInitialized) {
         throw std::runtime_error("MapGenerator must be initialized.");
+    }
+
+    if (!_isHeightMapEroded) {
+        erode(0.0);
     }
 
     CityLocation loc = _getCityLocation();
@@ -292,6 +302,10 @@ std::vector<char> gen::MapGenerator::getDrawData() {
         throw std::runtime_error("MapGenerator must be initialized.");
     }
 
+    if (!_isHeightMapEroded) {
+        erode(0.0);
+    }
+
     std::vector<std::vector<double> > contourData;
     _getContourDrawData(contourData);
     _contourData = contourData;
@@ -334,6 +348,10 @@ std::vector<char> gen::MapGenerator::getDrawData() {
     return charvect;
 }
 
+Extents2d gen::MapGenerator::getExtents() {
+    return _extents;
+}
+
 void gen::MapGenerator::_initializeVoronoiData() {
     // Boundary vertices in the Voronoi diagram cannot be used as
     // grid nodes and will be excluded from the map grid. Extending the
@@ -343,21 +361,50 @@ void gen::MapGenerator::_initializeVoronoiData() {
     Extents2d sampleExtents(_extents.minx - pad, _extents.miny - pad,
                             _extents.maxx + pad, _extents.maxy + pad);
 
+    gen::config::print("\tGenerating poisson disc samples...");
+    StopWatch timer;
+    timer.start();
     std::vector<dcel::Point> samples;
     samples = PoissonDiscSampler::generateSamples(sampleExtents, 
                                                   _resolution, 
                                                   _poissonSamplerKValue);
-    _voronoi = Voronoi::voronoi(samples);
+    timer.stop();
+    gen::config::print("\tFinished generating " + 
+                       gen::config::toString(samples.size()) + " poisson disc "
+                       "samples in " + gen::config::toString(timer.getTime()) + 
+                       " seconds.\n");
+
+    gen::config::print("\tComputing Delaunay triangulation of " + 
+                       gen::config::toString(samples.size()) + " points...");
+    timer.reset();
+    timer.start();
+    dcel::DCEL triangulation = Delaunay::triangulate(samples);
+    timer.stop();
+    gen::config::print("\tFinished computing triangulation in " + 
+                       gen::config::toString(timer.getTime()) + " seconds.\n");
+
+    gen::config::print("\tComputing Voronoi diagram from delaunay triangulation...");
+    timer.reset();
+    timer.start();
+    _voronoi = Voronoi::delaunayToVoronoi(triangulation);
+    timer.stop();
+    gen::config::print("\tFinished computing Voronoi diagram in " + 
+                       gen::config::toString(timer.getTime()) + " seconds.\n");
 }
 
 void gen::MapGenerator::_initializeMapData() {
+    gen::config::print("\tInitializing map data...");
+    StopWatch timer;
+    timer.start();
     _vertexMap = VertexMap(&_voronoi, _extents);
+    _heightMap = NodeMap<double>(&_vertexMap, 0);
     _initializeNeighbourMap();
     _initializeFaceNeighbours();
     _initializeFaceVertices();
     _initializeFaceEdges();
-
-    _heightMap = NodeMap<double>(&_vertexMap, 0);
+    timer.stop();
+    gen::config::print("\tFinished initializing map data in " + 
+                       gen::config::toString(timer.getTime()) + " seconds.");
 }
 
 void gen::MapGenerator::_initializeNeighbourMap() {
@@ -1417,6 +1464,10 @@ void gen::MapGenerator::_updateCityMovementCost(City &city) {
 
 void gen::MapGenerator::_getTerritoryDrawData(
                             std::vector<std::vector<double> > &data) {
+    if (_cities.size() == 0) {
+        return;
+    }
+
     std::vector<VertexList> borders;
     _getTerritoryBorders(borders);
 
@@ -1789,6 +1840,10 @@ void gen::MapGenerator::_getBorderPath(int vidx,
 void gen::MapGenerator::_getLabelDrawData(std::vector<jsoncons::json> &data) {
     std::vector<Label> labels;
     _initializeLabels(labels);
+    if (labels.size() == 0) {
+        return;
+    }
+
     _generateLabelPlacements(labels);
 
     std::vector<jsoncons::json> jsondata;
@@ -1824,6 +1879,10 @@ void gen::MapGenerator::_initializeMarkerLabels(std::vector<Label> &labels) {
         labels.push_back(townLabel);
     }
 
+    if (labels.size() == 0) {
+        return;
+    }
+
     _initializeMarkerLabelScores(labels);
 }
 
@@ -1833,6 +1892,10 @@ void gen::MapGenerator::_initializeAreaLabels(std::vector<Label> &labels) {
         Label areaLabel;
         _initializeAreaLabel(_cities[i], areaLabel);
         labels.push_back(areaLabel);
+    }
+
+    if (labels.size() == 0) {
+        return;
     }
 
     _initializeAreaLabelScores(labels);
@@ -1962,7 +2025,7 @@ void gen::MapGenerator::_getAreaLabelSamples(City &city,
 
     int numFaces = territoryFaces.size();
     int numSamples = (int)(((double)numFaces / (double)maxCount)*_numAreaLabelSamples);
-    numSamples = fmin(numSamples, territoryFaces.size());
+    numSamples = (int)fmin(numSamples, territoryFaces.size());
     for (int i = 0; i < numSamples; i++) {
         samples.push_back(_computeFacePosition(territoryFaces[i]));
     }
