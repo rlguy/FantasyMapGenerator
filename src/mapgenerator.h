@@ -58,6 +58,7 @@ public:
     std::vector<char> getDrawData();
 
     Extents2d getExtents();
+    void setDrawScale(double scale);
 
 private:
     typedef std::vector<dcel::Vertex> VertexList;
@@ -360,6 +361,7 @@ private:
     std::vector<Town> _towns;
 
     FontFace _fontData;
+    double _drawScale = 1.0;
     double _cityMarkerRadius = 10.0;    // in pixels
     double _townMarkerRadius = 5.0;
     std::string _cityLabelFontFace;

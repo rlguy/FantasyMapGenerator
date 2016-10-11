@@ -9,6 +9,10 @@ std::string outfileExt = ".png";
 std::string outfile = "output" + outfileExt;
 double erosionAmount = -1.0;
 int erosionIterations = 3;
+int imageWidth = 1920;
+int imageHeight = 1080;
+double defaultExtentsHeight = 20.0;
+double drawScale = 1.0;
 bool verbose = false;
 
 void print(std::string msg) {
@@ -18,17 +22,18 @@ void print(std::string msg) {
 }
 
 bool parseOptions(int argc, char **argv) {
-
     OptionArgs opts;
     void *argtable[] = {
         opts.help       = arg_litn("h", "help", 0, 1, "display this help and exit"),
-        opts.seed       = arg_intn("s", "seed", "<int>", 0, 1, "set random generator seed"),
+        opts.seed       = arg_strn("s", "seed", "<uint>", 0, 1, "set random generator seed"),
         opts.timeseed   = arg_litn(NULL, "timeseed", 0, 1, "set seed from system time"),
         opts.resolution = arg_dbln("r", "resolution", "<float>", 0, 1, "level of map detail"),
         opts.outfile    = arg_filen("o", "output", "filename", 0, 1, "output file"),
         opts.output     = arg_filen(NULL, NULL, "<file>", 0, 1, "output file"),
         opts.eroamount  = arg_dbln("e", "erosion-amount", "<float>", 0, 1, "erosion amount"),
         opts.erosteps   = arg_intn(NULL, "erosion-steps", "<int>", 0, 1, "number of erosion iterations"),
+        opts.size       = arg_strn(NULL, "size", "<widthpx:heightpx>", 0, 1, "set output image size"),
+        opts.drawscale  = arg_dbln(NULL, "draw-scale", "<float>", 0, 1, "set scale of drawn lines/points"),
         opts.drawinfo   = arg_litn(NULL, "drawing-supported", 0, 1, "display whether drawing is supported and exit"),
         opts.verbose    = arg_litn("v", "verbose", 0, 1, "output additional information to stdout"),
         opts.end        = arg_end(20)
@@ -101,16 +106,19 @@ bool _setOptions(OptionArgs opts) {
     if (!_setOutputFile(opts.outfile, opts.output)) { return false; }
     if (!_setErosionAmount(opts.eroamount)) { return false; }
     if (!_setErosionIterations(opts.erosteps)) { return false; }
+    if (!_setImageSize(opts.size)) { return false; }
+    if (!_setDrawScale(opts.drawscale)) { return false; }
     if (!_setVerbosity(opts.verbose)) { return false; }
 
     return true;
 }
 
-bool _setSeed(arg_lit *timeseed, arg_int *seed) {
+bool _setSeed(arg_lit *timeseed, arg_str *seed) {
     if (timeseed->count > 0) {
         gen::config::seed = (unsigned int)time(NULL);
     } else if (seed->count > 0) {
-        gen::config::seed = (unsigned int)seed->ival[0];
+        std::istringstream istr(seed->sval[0]);
+        istr >> gen::config::seed;
     }
 
     return true;
@@ -175,6 +183,68 @@ bool _setErosionIterations(arg_int *iterations) {
     }
 
     gen::config::erosionIterations = n;
+
+    return true;
+}
+
+bool _setImageSize(arg_str *size) {
+    if (size->count == 0) {
+        return true;
+    }
+
+    std::string sizestr(size->sval[0]);
+    std::string delimiter = ":";
+    size_t dpos = sizestr.find(delimiter);
+    std::string invalidmsg("error: image size must be in form <widthpx:heighpx>.");
+    if (dpos == std::string::npos) {
+        std::cout << invalidmsg << std::endl;
+        return false;
+    }
+
+    std::string widthstr = sizestr.substr(0, dpos);
+    std::string heightstr = sizestr.substr(dpos + 1, sizestr.size());
+    if (widthstr.size() == 0 || heightstr.size() == 0) {
+        std::cout << invalidmsg << std::endl;
+        return false;
+    }
+
+    int widthpx;
+    std::istringstream istreamWidth(widthstr);
+    istreamWidth >> widthpx;
+    if (istreamWidth.fail() || widthpx <= 0) {
+        std::cout << "error: invalid image width value." << std::endl;
+        std::cout << "width value: " << widthstr << std::endl;
+        return false;
+    }
+
+    int heightpx;
+    std::istringstream istreamHeight(heightstr);
+    istreamHeight >> heightpx;
+    if (istreamHeight.fail() || heightpx <= 0) {
+        std::cout << "error: invalid image height value." << std::endl;
+        std::cout << "height value: " << heightstr << std::endl;
+        return false;
+    }
+
+    gen::config::imageWidth = widthpx;
+    gen::config::imageHeight = heightpx;
+
+    return true;
+}
+
+bool _setDrawScale(arg_dbl *drawscale) {
+    if (drawscale->count == 0) {
+        return true;
+    }
+
+    double s = drawscale->dval[0];
+    if (s <= 0) {
+        std::cout << "error: draw scale must be greater than zero." << std::endl; 
+        std::cout << "draw size: " << s << std::endl;
+        return false;
+    }
+
+    gen::config::drawScale = s;
 
     return true;
 }

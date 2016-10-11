@@ -333,6 +333,7 @@ std::vector<char> gen::MapGenerator::getDrawData() {
     jsoncons::json output;
     output["image_width"] = _imgwidth;
     output["image_height"] = _imgheight;
+    output["draw_scale"] = _drawScale;
     output["contour"] = contourData;
     output["river"] = riverData;
     output["slope"] = slopeData;
@@ -350,6 +351,15 @@ std::vector<char> gen::MapGenerator::getDrawData() {
 
 Extents2d gen::MapGenerator::getExtents() {
     return _extents;
+}
+
+void gen::MapGenerator::setDrawScale(double scale) {
+    if (scale > 0.0) {
+        double origDrawScale = _drawScale;
+        _drawScale = scale;
+        _cityMarkerRadius *= (_drawScale / origDrawScale);
+        _townMarkerRadius *= (_drawScale / origDrawScale);
+    }
 }
 
 void gen::MapGenerator::_initializeVoronoiData() {

@@ -226,8 +226,14 @@ int main(int argc, char **argv) {
     gen::config::print("Generating map with seed value: " + 
                        gen::config::toString(gen::config::seed));
 
-    Extents2d extents(0, 0, 1.7777*20.0, 20.0);
-    gen::MapGenerator map(extents, gen::config::resolution);
+    int imgWidth = gen::config::imageWidth;
+    int imgHeight = gen::config::imageHeight;
+    double aspectRatio = (double)imgWidth / (double)imgHeight;
+    double extentsHeight = gen::config::defaultExtentsHeight;
+    double extentsWidth = aspectRatio * extentsHeight;
+    Extents2d extents(0, 0, extentsWidth, extentsHeight);
+    gen::MapGenerator map(extents, gen::config::resolution, imgWidth, imgHeight);
+    map.setDrawScale(gen::config::drawScale);
 
     gen::config::print("\nInitializing map generator...");
     StopWatch timer;

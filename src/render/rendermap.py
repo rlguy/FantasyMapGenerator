@@ -89,6 +89,27 @@ def draw_labels(data, ctx, imgwidth, imgheight):
         ctx.move_to(px, py)
         ctx.show_text(label["text"])
 
+def update_draw_scale(scale):
+    global SLOPE_LINE_WIDTH
+    global RIVER_LINE_WIDTH
+    global CONTOUR_LINE_WIDTH
+    global BORDER_LINE_WIDTH
+    global BORDER_DASH_PATTERN
+    global CITY_MARKER_OUTER_RADIUS
+    global CITY_MARKER_INNER_RADIUS
+    global TOWN_MARKER_RADIUS
+
+    SLOPE_LINE_WIDTH    *= scale
+    RIVER_LINE_WIDTH    *= scale
+    CONTOUR_LINE_WIDTH  *= scale
+    BORDER_LINE_WIDTH   *= scale
+    BORDER_DASH_PATTERN[0] *= scale
+    BORDER_DASH_PATTERN[1] *= scale
+
+    CITY_MARKER_OUTER_RADIUS *= scale
+    CITY_MARKER_INNER_RADIUS *= scale
+    TOWN_MARKER_RADIUS       *= scale
+
 def draw_map(jsonstring, output_filename):
     data = json.loads(jsonstring)
 
@@ -96,6 +117,8 @@ def draw_map(jsonstring, output_filename):
     imgheight = data["image_height"]
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, imgwidth, imgheight)
     ctx = cairo.Context(surface)
+
+    update_draw_scale(data["draw_scale"])
      
     ctx.set_source_rgba(*BACKGROUND_RGBA)
     ctx.rectangle(0, 0, imgwidth, imgheight)
