@@ -307,28 +307,43 @@ std::vector<char> gen::MapGenerator::getDrawData() {
     }
 
     std::vector<std::vector<double> > contourData;
-    _getContourDrawData(contourData);
-    _contourData = contourData;
+    if (_isContourEnabled) { 
+        _getContourDrawData(contourData);
+        _contourData = contourData;
+    }
 
     std::vector<std::vector<double> > riverData;
-    _getRiverDrawData(riverData);
-    _riverData = riverData;
+    if (_isRiversEnabled) {
+        _getRiverDrawData(riverData);
+        _riverData = riverData;
+    }
 
     std::vector<double> slopeData;
-    _getSlopeDrawData(slopeData);
+    if (_isSlopesEnabled) {
+        _getSlopeDrawData(slopeData);
+    }
 
     std::vector<double> cityData;
-    _getCityDrawData(cityData);
+    if (_isCitiesEnabled) {
+        _getCityDrawData(cityData);
+    }
 
     std::vector<double> townData;
-    _getTownDrawData(townData);
+    if (_isTownsEnabled) {
+        _getTownDrawData(townData);
+    }
 
     std::vector<std::vector<double> > territoryData;
     _getTerritoryDrawData(territoryData);
     _borderData = territoryData;
+    if (!_isBordersEnabled) {
+        territoryData.clear();
+    }
 
     std::vector<jsoncons::json> labelData;
-    _getLabelDrawData(labelData);
+    if (_isLabelsEnabled) {
+        _getLabelDrawData(labelData);
+    }
 
     jsoncons::json output;
     output["image_width"] = _imgwidth;
@@ -360,6 +375,75 @@ void gen::MapGenerator::setDrawScale(double scale) {
         _cityMarkerRadius *= (_drawScale / origDrawScale);
         _townMarkerRadius *= (_drawScale / origDrawScale);
     }
+}
+
+void gen::MapGenerator::enableSlopes() {
+    _isSlopesEnabled = true;
+}
+
+void gen::MapGenerator::enableRivers() {
+    _isRiversEnabled = true;
+}
+
+void gen::MapGenerator::enableContour() {
+    _isContourEnabled = true;
+}
+
+void gen::MapGenerator::enableBorders() {
+    _isBordersEnabled = true;
+}
+
+void gen::MapGenerator::enableCities() {
+    _isCitiesEnabled = true;
+}
+
+void gen::MapGenerator::enableTowns() {
+    _isTownsEnabled = true;
+}
+
+void gen::MapGenerator::enableLabels() {
+    _isLabelsEnabled = true;
+}
+
+void gen::MapGenerator::enableAreaLabels() {
+    _isAreaLabelsEnabled = true;
+}
+
+void gen::MapGenerator::disableSlopes() {
+    _isSlopesEnabled = false;
+}
+
+void gen::MapGenerator::disableRivers() {
+    _isRiversEnabled = false;
+}
+
+void gen::MapGenerator::disableContour() {
+    _isContourEnabled = false;
+
+}
+
+void gen::MapGenerator::disableBorders() {
+    _isBordersEnabled = false;
+}
+
+void gen::MapGenerator::disableCities() {
+    _isCitiesEnabled = false;
+
+}
+
+void gen::MapGenerator::disableTowns() {
+    _isTownsEnabled = false;
+
+}
+
+void gen::MapGenerator::disableLabels() {
+    _isLabelsEnabled = false;
+
+}
+
+void gen::MapGenerator::disableAreaLabels() {
+    _isAreaLabelsEnabled = false;
+
 }
 
 void gen::MapGenerator::_initializeVoronoiData() {
@@ -1868,7 +1952,10 @@ void gen::MapGenerator::_initializeLabels(std::vector<Label> &labels) {
     std::vector<Label> markerLabels;
     std::vector<Label> areaLabels;
     _initializeMarkerLabels(markerLabels);
-    _initializeAreaLabels(areaLabels);
+
+    if (_isAreaLabelsEnabled) {
+        _initializeAreaLabels(areaLabels);
+    }
 
     labels.insert(labels.end(), markerLabels.begin(), markerLabels.end());
     labels.insert(labels.end(), areaLabels.begin(), areaLabels.end());

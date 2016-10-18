@@ -60,6 +60,24 @@ public:
     Extents2d getExtents();
     void setDrawScale(double scale);
 
+    void enableSlopes();
+    void enableRivers();
+    void enableContour();
+    void enableBorders();
+    void enableCities();
+    void enableTowns();
+    void enableLabels();
+    void enableAreaLabels();
+
+    void disableSlopes();
+    void disableRivers();
+    void disableContour();
+    void disableBorders();
+    void disableCities();
+    void disableTowns();
+    void disableLabels();
+    void disableAreaLabels();
+
 private:
     typedef std::vector<dcel::Vertex> VertexList;
 
@@ -393,6 +411,15 @@ private:
     double _maxTemperatureChanges = 100;
     int _successfulRepositioningFactor = 5;
     int _totalRepositioningFactor = 20;
+
+    bool _isSlopesEnabled = true;
+    bool _isRiversEnabled = true;
+    bool _isContourEnabled = true;
+    bool _isBordersEnabled = true;
+    bool _isCitiesEnabled = true;
+    bool _isTownsEnabled = true;
+    bool _isLabelsEnabled = true;
+    bool _isAreaLabelsEnabled = true;
 };
 
 }

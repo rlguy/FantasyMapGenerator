@@ -9,10 +9,20 @@ std::string outfileExt = ".png";
 std::string outfile = "output" + outfileExt;
 double erosionAmount = -1.0;
 int erosionIterations = 3;
+int numCities = -1;
+int numTowns = -1;
 int imageWidth = 1920;
 int imageHeight = 1080;
 double defaultExtentsHeight = 20.0;
 double drawScale = 1.0;
+bool enableSlopes = true;
+bool enableRivers = true;
+bool enableContour = true;
+bool enableBorders = true;
+bool enableCities = true;
+bool enableTowns = true;
+bool enableLabels = true;
+bool enableAreaLabels = true;
 bool verbose = false;
 
 void print(std::string msg) {
@@ -24,19 +34,29 @@ void print(std::string msg) {
 bool parseOptions(int argc, char **argv) {
     OptionArgs opts;
     void *argtable[] = {
-        opts.help       = arg_litn("h", "help", 0, 1, "display this help and exit"),
-        opts.seed       = arg_strn("s", "seed", "<uint>", 0, 1, "set random generator seed"),
-        opts.timeseed   = arg_litn(NULL, "timeseed", 0, 1, "set seed from system time"),
-        opts.resolution = arg_dbln("r", "resolution", "<float>", 0, 1, "level of map detail"),
-        opts.outfile    = arg_filen("o", "output", "filename", 0, 1, "output file"),
-        opts.output     = arg_filen(NULL, NULL, "<file>", 0, 1, "output file"),
-        opts.eroamount  = arg_dbln("e", "erosion-amount", "<float>", 0, 1, "erosion amount"),
-        opts.erosteps   = arg_intn(NULL, "erosion-steps", "<int>", 0, 1, "number of erosion iterations"),
-        opts.size       = arg_strn(NULL, "size", "<widthpx:heightpx>", 0, 1, "set output image size"),
-        opts.drawscale  = arg_dbln(NULL, "draw-scale", "<float>", 0, 1, "set scale of drawn lines/points"),
-        opts.drawinfo   = arg_litn(NULL, "drawing-supported", 0, 1, "display whether drawing is supported and exit"),
-        opts.verbose    = arg_litn("v", "verbose", 0, 1, "output additional information to stdout"),
-        opts.end        = arg_end(20)
+        opts.help         = arg_litn("h", "help", 0, 1, "display this help and exit"),
+        opts.seed         = arg_strn("s", "seed", "<uint>", 0, 1, "set random generator seed"),
+        opts.timeseed     = arg_litn(NULL, "timeseed", 0, 1, "set seed from system time"),
+        opts.resolution   = arg_dbln("r", "resolution", "<float>", 0, 1, "level of map detail"),
+        opts.outfile      = arg_filen("o", "output", "filename", 0, 1, "output file"),
+        opts.output       = arg_filen(NULL, NULL, "<file>", 0, 1, "output file"),
+        opts.eroamount    = arg_dbln("e", "erosion-amount", "<float>", 0, 1, "erosion amount"),
+        opts.erosteps     = arg_intn(NULL, "erosion-steps", "<int>", 0, 1, "number of erosion iterations"),
+        opts.ncities      = arg_intn("c", "cities", "<int>", 0, 1, "number of generated cities"),
+        opts.ntowns       = arg_intn("t", "towns", "<int>", 0, 1, "number of generated towns"),
+        opts.size         = arg_strn(NULL, "size", "<widthpx:heightpx>", 0, 1, "set output image size"),
+        opts.drawscale    = arg_dbln(NULL, "draw-scale", "<float>", 0, 1, "set scale of drawn lines/points"),
+        opts.noslopes     = arg_litn(NULL, "no-slopes", 0, 1, "disable slope drawing"),
+        opts.norivers     = arg_litn(NULL, "no-rivers", 0, 1, "disable river drawing"),
+        opts.nocontour    = arg_litn(NULL, "no-contour", 0, 1, "disable contour drawing"),
+        opts.noborders    = arg_litn(NULL, "no-borders", 0, 1, "disable border drawing"),
+        opts.nocities     = arg_litn(NULL, "no-cities", 0, 1, "disable city drawing"),
+        opts.notowns      = arg_litn(NULL, "no-towns", 0, 1, "disable town drawing"),
+        opts.nolabels     = arg_litn(NULL, "no-labels", 0, 1, "disable label drawing"),
+        opts.noarealabels = arg_litn(NULL, "no-arealabels", 0, 1, "disable area label drawing"),
+        opts.drawinfo     = arg_litn(NULL, "drawing-supported", 0, 1, "display whether drawing is supported and exit"),
+        opts.verbose      = arg_litn("v", "verbose", 0, 1, "output additional information to stdout"),
+        opts.end          = arg_end(20)
     };
 
     if (arg_nullcheck(argtable) != 0) {
@@ -52,7 +72,7 @@ bool parseOptions(int argc, char **argv) {
         std::cout << "Usage: " << progname;
         arg_print_syntax(stdout, argtable, "\n");
         std::cout << "\nOptions:\n" << std::endl;
-        arg_print_glossary(stdout, argtable, "  %-35s %s\n");
+        arg_print_glossary(stdout, argtable, "  %-30s %s\n");
         arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
         return false;
     }
@@ -106,8 +126,18 @@ bool _setOptions(OptionArgs opts) {
     if (!_setOutputFile(opts.outfile, opts.output)) { return false; }
     if (!_setErosionAmount(opts.eroamount)) { return false; }
     if (!_setErosionIterations(opts.erosteps)) { return false; }
+    if (!_setNumCities(opts.ncities)) { return false; }
+    if (!_setNumTowns(opts.ntowns)) { return false; }
     if (!_setImageSize(opts.size)) { return false; }
     if (!_setDrawScale(opts.drawscale)) { return false; }
+    if (!_disableSlopes(opts.noslopes)) { return false; }
+    if (!_disableRivers(opts.norivers)) { return false; }
+    if (!_disableContour(opts.nocontour)) { return false; }
+    if (!_disableBorders(opts.noborders)) { return false; }
+    if (!_disableCities(opts.nocities)) { return false; }
+    if (!_disableTowns(opts.notowns)) { return false; }
+    if (!_disableLabels(opts.nolabels)) { return false; }
+    if (!_disableAreaLabels(opts.noarealabels)) { return false; }
     if (!_setVerbosity(opts.verbose)) { return false; }
 
     return true;
@@ -187,6 +217,40 @@ bool _setErosionIterations(arg_int *iterations) {
     return true;
 }
 
+bool _setNumCities(arg_int *ncities) {
+    if (ncities->count == 0) {
+        return true;
+    }
+
+    int n = ncities->ival[0];
+    if (n < 0) {
+        std::cout << "error: number of cities must be greater than or equal to zero." << std::endl; 
+        std::cout << "number of cities: " << n << std::endl;
+        return false;
+    }
+
+    gen::config::numCities = n;
+
+    return true;
+}
+
+bool _setNumTowns(arg_int *ntowns) {
+    if (ntowns->count == 0) {
+        return true;
+    }
+
+    int n = ntowns->ival[0];
+    if (n < 0) {
+        std::cout << "error: number of towns must be greater than or equal to zero." << std::endl; 
+        std::cout << "number of towns: " << n << std::endl;
+        return false;
+    }
+
+    gen::config::numTowns = n;
+
+    return true;
+}
+
 bool _setImageSize(arg_str *size) {
     if (size->count == 0) {
         return true;
@@ -245,6 +309,70 @@ bool _setDrawScale(arg_dbl *drawscale) {
     }
 
     gen::config::drawScale = s;
+
+    return true;
+}
+
+bool _disableSlopes(arg_lit *noslopes) {
+    if (noslopes->count > 0) {
+        gen::config::enableSlopes = false;
+    }
+
+    return true;
+}
+
+bool _disableRivers(arg_lit *norivers) {
+    if (norivers->count > 0) {
+        gen::config::enableRivers = false;
+    }
+
+    return true;
+}
+
+bool _disableContour(arg_lit *nocontour) {
+    if (nocontour->count > 0) {
+        gen::config::enableContour = false;
+    }
+
+    return true;
+}
+
+bool _disableBorders(arg_lit *noborders) {
+    if (noborders->count > 0) {
+        gen::config::enableBorders = false;
+    }
+
+    return true;
+}
+
+bool _disableCities(arg_lit *nocities) {
+    if (nocities->count > 0) {
+        gen::config::enableCities = false;
+    }
+
+    return true;
+}
+
+bool _disableTowns(arg_lit *notowns) {
+    if (notowns->count > 0) {
+        gen::config::enableTowns = false;
+    }
+
+    return true;
+}
+
+bool _disableLabels(arg_lit *nolabels) {
+    if (nolabels->count > 0) {
+        gen::config::enableLabels = false;
+    }
+
+    return true;
+}
+
+bool _disableAreaLabels(arg_lit *noarealabels) {
+    if (noarealabels->count > 0) {
+        gen::config::enableAreaLabels = false;
+    }
 
     return true;
 }

@@ -235,6 +235,15 @@ int main(int argc, char **argv) {
     gen::MapGenerator map(extents, gen::config::resolution, imgWidth, imgHeight);
     map.setDrawScale(gen::config::drawScale);
 
+    if (!gen::config::enableSlopes) { map.disableSlopes(); }
+    if (!gen::config::enableRivers) { map.disableRivers(); }
+    if (!gen::config::enableContour) { map.disableContour(); }
+    if (!gen::config::enableBorders) { map.disableBorders(); }
+    if (!gen::config::enableCities) { map.disableCities(); }
+    if (!gen::config::enableTowns) { map.disableTowns(); }
+    if (!gen::config::enableLabels) { map.disableLabels(); }
+    if (!gen::config::enableAreaLabels) { map.disableAreaLabels(); }
+
     gen::config::print("\nInitializing map generator...");
     StopWatch timer;
     timer.start();
@@ -269,6 +278,11 @@ int main(int argc, char **argv) {
 
     int numCities = (int)randomDouble(3, 7);
     int numTowns = (int)randomDouble(8, 25);
+    if (gen::config::numCities >= 0) { numCities = gen::config::numCities; }
+    if (gen::config::numTowns >= 0) { numTowns = gen::config::numTowns; }
+    if (!gen::config::enableCities) { numCities = 0; }
+    if (!gen::config::enableTowns) { numTowns = 0; }
+
     int numLabels = 2*numCities + numTowns;
     std::vector<std::string> labelNames = getLabelNames(numLabels);
 
