@@ -2,7 +2,9 @@
 
 This program is an implementation of a fantasy map generator written in C++ based on the methods described in Martin O'Leary's "Generating fantasy map" notes (https://mewo2.com/notes/terrain/). 
 
-This project uses [jsoncons](https://github.com/danielaparker/jsoncons) for parsing JSON data, [Argetable3](http://www.argtable.org/) for parsing command line arguments, [Python](https://www.python.org/) and [PyCairo](https://cairographics.org/pycairo/) for drawing, and data from [GeoNames](http://www.geonames.org/) for city name data.
+This project uses [jsoncons](https://github.com/danielaparker/jsoncons) for parsing JSON data, [Argtable3](http://www.argtable.org/) for parsing command line arguments, [Python](https://www.python.org/) and [PyCairo](https://cairographics.org/pycairo/) for drawing, and data from [GeoNames](http://www.geonames.org/) for city name data.
+
+The project page and generation notes are also available here: [http://rlguy.com/map_generation](http://rlguy.com/map_generation)
 
 [![alt tag](http://rlguy.com/map_generation/images/example_small.jpg)](http://rlguy.com/map_generation/images/example_large.jpg)
 
@@ -222,7 +224,7 @@ After all candidates for the marker and area labels have been generated, the fin
 3. Repeat until the rate of improvement falls below some threshold:
   a) Decrease T according to an annealing schedule.
   b) Chose a label randomly and randomly select a new candidate.
-  c) Compute ΔE, the change in label configuration score caused by selecting a new label. candidate.
+  c) Compute ΔE, the change in label configuration score caused by selecting a new label candidate.
   d) If the new labeling is worse, undo the candidate change with a probability P = 1.0 - exp(ΔE/T).
 ```
 The score of a label configuration is calculated by averaging the base scores of the selected candidates and adding an additional penalty for each set of overlapping candidates.
