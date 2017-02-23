@@ -11,6 +11,13 @@ endif()
 
 find_package(PythonLibs)
 if (PYTHONLIBS_FOUND)
+
+	if(${PYTHONLIBS_VERSION_STRING} VERSION_LESS 3)
+		add_definitions(-DPYTHON_VERSION_2)
+	else()
+		add_definitions(-DPYTHON_VERSION_3)
+	endif()
+
 	set(CHECK_CAIRO_PATH "${CMAKE_SOURCE_DIR}/src/render/check_cairo_support.py")
 	execute_process(COMMAND python ${CHECK_CAIRO_PATH} RESULT_VARIABLE IS_CAIRO_SUPPORTED)
 	if (IS_CAIRO_SUPPORTED)

@@ -16,6 +16,7 @@ namespace render {
 void drawMap(std::vector<char> &drawdata, std::string filename);
 
 #ifdef PYTHON_RENDERING_SUPPORTED
+	PyObject* _get_PyString_FromString(const char *v);
 	void _checkPyObjectNotNull(PyObject *obj, std::string err);
 	void _checkPySuccess(int ret, std::string err);
 #endif

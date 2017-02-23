@@ -14,7 +14,7 @@ void gen::render::drawMap(std::vector<char> &drawdata, std::string filename) {
     PyObject *pModuleDict = PyModule_GetDict(pModule);
     _checkPyObjectNotNull(pModuleDict, "get module dict");
 
-    PyObject *pFunctionName = PyString_FromString(drawFunctionName.c_str());
+    PyObject *pFunctionName = _get_PyString_FromString(drawFunctionName.c_str());
     _checkPyObjectNotNull(pFunctionName, "function string");
     if (!PyDict_Contains(pModuleDict, pFunctionName)) {
         _checkPySuccess(-1, "function not in module dict");
@@ -27,10 +27,10 @@ void gen::render::drawMap(std::vector<char> &drawdata, std::string filename) {
         _checkPySuccess(-1, "function not callable");
     }
 
-    PyObject *pDrawData = PyString_FromString(drawdata.data());
+    PyObject *pDrawData = _get_PyString_FromString(drawdata.data());
     _checkPyObjectNotNull(pDrawData, "draw data string");
 
-    PyObject *pFilename = PyString_FromString(filename.c_str());
+    PyObject *pFilename = _get_PyString_FromString(filename.c_str());
     _checkPyObjectNotNull(pDrawData, "draw data string");
 
     PyObject *pArgs = PyTuple_New(2);
@@ -50,6 +50,14 @@ void gen::render::drawMap(std::vector<char> &drawdata, std::string filename) {
     }
 
     Py_Finalize();
+}
+
+PyObject* gen::render::_get_PyString_FromString(const char *v) {
+    #ifdef PYTHON_VERSION_2
+    return PyString_FromString(v);
+    #else
+    return PyBytes_FromString(v);
+    #endif
 }
 
 void gen::render::_checkPyObjectNotNull(PyObject *obj, std::string err) {
