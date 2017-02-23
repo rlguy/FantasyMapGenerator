@@ -110,15 +110,15 @@ Example:
 ```./map_generation.exe -v --timeseed -r 0.08 -o fantasy_map.png```
 
  Leaving the options blank will generate a high quality map with resolution ```1920x1080```
- to the file ```output.png```.
+ to the file ```fantasy_map.png```.
 
 # Map Generation Process
 
-The map generation process involves the generation of irregular grids, the generation of terrain, the generation of city and towns locations, and their borders, and the generation a label placements.
+The map generation process involves the generation of irregular grids, the generation of terrain, the generation of city/town locations and their borders, and the generation of label placements.
 
 ## Generating Irregular Grids
 
-A Poisson disc sampler generates a set of random points with the property that no two points are within a set radius of eachother.
+A Poisson disc sampler generates a set of random points with the property that no two points are within some set radius of eachother.
 ![alt tag](http://rlguy.com/map_generation/images/uniform_vs_poisson_sampling.jpg)
 
 The set of points are triangulated in a Delaunay triangulation. The triangulation is stored in a doubly connected edge list (DCEL) data structure.
@@ -131,7 +131,7 @@ Each vertex in the Delaunay triangulation becomes a face in the Voronoi diagram,
 
 ![alt tag](http://rlguy.com/map_generation/images/voronoi_delaunay_overlay.jpg)
 
-The vertices in the Voronoi diagram will be used as the nodes in an irregular grid. Note that each node has exactly three neighbours.
+The vertices of the Voronoi diagram will be used as the nodes in an irregular grid. Note that each node has exactly three neighbours.
 
 ## Generating Terrain
 
@@ -170,7 +170,7 @@ The height map is shaded based upon the horizontal component of the slope. Short
 
 ## Generating Cities and Borders
 
-City score values are computed before the placement of a city and have a bonus at locations where there is a high flux value and a penalty at locations that are too close to other cities or too close to the edge of the map.
+City score values are computed to determine the location of a city and have a bonus at locations where there is a high flux value and a penalty at locations that are too close to other cities or too close to the edge of the map.
 
 ![alt tag](http://rlguy.com/map_generation/images/city_scores.jpg)
 
@@ -178,7 +178,7 @@ Cities are placed at locations where the city score value is at a maximum.
 
 ![alt tag](http://rlguy.com/map_generation/images/city_locations.jpg)
 
-For each city, the movement cost is calculated for each tile (Voronoi face). Movement costs are based on horizontal and vertical distance, amount of flux (crossing rivers), and transitioning from land to sea (or sea to land).
+For each city, the movement cost is calculated at each tile (Voronoi face). Movement costs are based on horizontal and vertical distance, amount of flux (crossing rivers), and transitioning from land to sea (or sea to land).
 
 ![alt tag](http://rlguy.com/map_generation/images/movement_costs.jpg)
 
@@ -186,7 +186,7 @@ The tiles are then divided amongst the cities depending on who has the lowest mo
 
 ![alt tag](http://rlguy.com/map_generation/images/territories_unclean.jpg)
 
-This method tends to create jagged borders and disjointed territories. The territories are cleaned up by smoothing the edges and by instating a rule that a city territory must contain the city and be a contiguous region.
+This method tends to create jagged borders and disjointed territories. The territories are cleaned up by smoothing the edges and by adding a rule that a city territory must contain the city and be a contiguous region.
 
 ![alt tag](http://rlguy.com/map_generation/images/territories_clean.jpg)
 
