@@ -10,6 +10,8 @@
 #include <vector>
 #include <string>
 
+#include "resources.h"
+
 namespace gen {
 namespace render {
 

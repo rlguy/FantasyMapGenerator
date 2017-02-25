@@ -8,6 +8,11 @@ void gen::render::drawMap(std::vector<char> &drawdata, std::string filename) {
 
     Py_Initialize();
 
+    std::string appendcmd = "sys.path.append('" + 
+                             std::string(RESOURCES_EXECUTABLE_DIRECTORY) + "')";
+    PyRun_SimpleString("import sys");
+    PyRun_SimpleString(appendcmd.c_str());
+
     PyObject *pModule = PyImport_ImportModule(drawModuleName.c_str());
     _checkPyObjectNotNull(pModule, "module import");
 
@@ -56,7 +61,7 @@ PyObject* gen::render::_get_PyString_FromString(const char *v) {
     #ifdef PYTHON_VERSION_2
     return PyString_FromString(v);
     #else
-    return PyBytes_FromString(v);
+    return PyUnicode_FromString(v);
     #endif
 }
 
