@@ -67,6 +67,8 @@ The map generator is a command line tool and can be invoked with the command:
 ./map_generator [OPTIONS]
 ```
 
+Leaving the options blank will generate a high quality map with resolution ```1920x1080``` to the file ```output.png```.
+
 A set of options can be displayed with the ```--help``` flag:
 
  ```
@@ -107,10 +109,9 @@ Options:
 
 Example:
 
-```./map_generation.exe -v --timeseed -r 0.08 -o fantasy_map.png```
+The following command will output program information to the screen (-v), will set the random generator seed to your current system time (--timeseed), will set the resolution to 0.08 (-r 0.08), and write the generated map to the file ```fantasy_map.png``` (-o fantasy_map.png).
 
- Leaving the options blank will generate a high quality map with resolution ```1920x1080```
- to the file ```fantasy_map.png```.
+```./map_generation.exe -v --timeseed -r 0.08 -o fantasy_map.png```
 
 # Map Generation Process
 
